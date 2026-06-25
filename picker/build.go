@@ -2,7 +2,6 @@ package picker
 
 import (
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -52,6 +51,13 @@ func (NoopEnricher) Window(string, int, string, string) WindowBadge { return Win
 
 // Build returns the fzf input rows for every window across all sessions.
 func Build(e Enricher) (string, error) {
+	return BuildFiltered(e, "")
+}
+
+// BuildFiltered returns fzf input rows, optionally narrowed by query while
+// preserving matching session headers. A query matching the session keeps the
+// whole group; a query matching child rows keeps the header plus matching rows.
+func BuildFiltered(e Enricher, query string) (string, error) {
 	if e == nil {
 		e = NoopEnricher{}
 	}
@@ -62,22 +68,40 @@ func Build(e Enricher) (string, error) {
 
 	var b strings.Builder
 	prev := ""
+	var group []windowRow
+	flush := func(session string) {
+		if session == "" {
+			return
+		}
+		rows := filterGroup(session, group, query)
+		if len(rows) == 0 {
+			return
+		}
+		writeHeader(&b, session, groupSearch(rows))
+		for _, r := range rows {
+			writeWindowRow(&b, r)
+		}
+	}
 	for _, w := range windows {
 		if w.Session != prev {
-			writeHeader(&b, w.Session)
+			flush(prev)
+			group = group[:0]
 			prev = w.Session
 		}
-		writeWindow(&b, w, e.Window(w.Session, w.Index, w.Name, w.Command))
+		group = append(group, newWindowRow(w, e.Window(w.Session, w.Index, w.Name, w.Command)))
 	}
+	flush(prev)
 	return b.String(), nil
 }
 
-func writeHeader(b *strings.Builder, session string) {
-	// <session>\t<cyan><session><rst>
-	fmt.Fprintf(b, "%s\t%s%s%s\n", session, Cyan, session, Rst)
+type windowRow struct {
+	target string
+	dot    string
+	label  string
+	search string
 }
 
-func writeWindow(b *strings.Builder, w tmuxcli.Window, wb WindowBadge) {
+func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
 	dot := "  "
 	if w.Active {
 		dot = Green + "●" + Rst + " "
@@ -92,15 +116,50 @@ func writeWindow(b *strings.Builder, w tmuxcli.Window, wb WindowBadge) {
 		label = w.Name + " " + Dim + "(" + w.Command + ")" + Rst
 	}
 
-	// The target stays "session:index" so selecting the row switches to the right
-	// window, but the dimmed prefix the row displays is the window's own current
-	// directory (basename) instead of the session name — so each window is
-	// identified by where it actually sits, even within a multi-directory session.
 	idx := strconv.Itoa(w.Index)
-	dir := filepath.Base(w.Path)
-	if w.Path == "" {
-		dir = w.Session
+	target := w.Session + ":" + idx
+	return windowRow{
+		target: target,
+		dot:    dot,
+		label:  label,
+		search: cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, wb.AgentLabel, wb.Status}, " ")),
 	}
-	fmt.Fprintf(b, "%s:%s\t   %s%s%s:%s%s %s\n",
-		w.Session, idx, dot, Dim, dir, idx, Rst, label)
+}
+
+func writeHeader(b *strings.Builder, session, search string) {
+	// <session>\t<cyan><session><rst>\t<hidden child search terms>
+	fmt.Fprintf(b, "%s\t%s%s%s\t%s\n", session, Cyan, session, Rst, search)
+}
+
+func writeWindowRow(b *strings.Builder, r windowRow) {
+	// The hidden target stays "session:index" so selecting the row switches to
+	// the right window. Keep the process/agent as the primary label, with the
+	// window context as a dim suffix so filtered results remain identifiable.
+	fmt.Fprintf(b, "%s\t   %s%s %s%s%s\t%s\n", r.target, r.dot, r.label, Dim, r.target, Rst, r.search)
+}
+
+func groupSearch(rows []windowRow) string {
+	terms := make([]string, 0, len(rows))
+	for _, r := range rows {
+		terms = append(terms, r.search)
+	}
+	return strings.Join(terms, " ")
+}
+
+func cleanSearch(s string) string {
+	return strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(s)
+}
+
+func filterGroup(session string, rows []windowRow, query string) []windowRow {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" || strings.Contains(strings.ToLower(session), q) {
+		return rows
+	}
+	out := make([]windowRow, 0, len(rows))
+	for _, r := range rows {
+		if strings.Contains(strings.ToLower(r.search), q) {
+			out = append(out, r)
+		}
+	}
+	return out
 }

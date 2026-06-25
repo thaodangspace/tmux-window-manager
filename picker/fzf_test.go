@@ -27,11 +27,15 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	q := ShellQuote(self)
 	for _, want := range []string{
 		"--preview=" + q + " preview {1}",
-		"--bind=ctrl-r:reload(" + q + " list)",
+		"--bind=change:reload-sync(" + q + " list --query {q})",
+		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("options missing %q\ngot: %v", want, opts)
 		}
+	}
+	if !strings.Contains(joined, "--disabled") {
+		t.Errorf("options should disable built-in filtering: %v", opts)
 	}
 	// Expect-key and print-query must be present for the run-side parser.
 	if !strings.Contains(joined, "--expect=ctrl-n") || !strings.Contains(joined, "--print-query") {
