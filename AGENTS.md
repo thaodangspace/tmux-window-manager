@@ -42,7 +42,7 @@ picker/     list row building + fzf invocation
   enrich.go    LiveEnricher: pane paths + status map -> badges (pure lookups)
   color.go     ANSI palette (Loader spinner, Waiting bell)
   fzf.go       fzf option assembly, ShellQuote, selection temp-file paths
-dirs/       native directory lister for Ctrl-N (replaces fd)
+dirs/       native Git-repo directory lister for Ctrl-N (replaces fd)
 preview/    preview rendering (stacked panes; pane-names via process detection)
 tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm_bin
 ```
@@ -84,6 +84,10 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   is undone when the popup closes, so the popup writes the selection + fzf exit
   code to `$TMPDIR/tmux_wm_{sel,err}_<client>.txt` and the outer `run` acts after
   the popup closes. Client `/` is sanitized to `_` in the filename.
+- **Ctrl-N directory suggestions are Git repos only.** The new-session picker
+  still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
+  `$HOME` top-level children), but emits only candidates with a direct `.git`
+  entry. Manually typed paths are still accepted/created by `newSession`.
 - **PATH priming.** `run-shell` gives a minimal env, so `cli.Execute` prepends
   `/opt/homebrew/bin` and `/usr/local/bin` before any `fzf`/editor exec.
 - **Build-on-install.** `tmux-window-manager.tmux` rebuilds when the binary is

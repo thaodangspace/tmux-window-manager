@@ -24,12 +24,14 @@ func WindowFzfOptions(self string) []string {
 	q := ShellQuote(self)
 	return []string{
 		"--ansi", "--reverse", "--no-sort", "--prompt=window > ",
+		"--disabled",
 		"--delimiter=\t", "--with-nth=2",
 		"--preview=" + q + " preview {1}",
 		"--preview-window=right,60%,follow",
 		"--bind=ctrl-z:execute-silent(" + q + " open-editor zed {1})+abort," +
 			"ctrl-t:execute-silent(" + q + " open-editor typora {1})+abort",
-		"--bind=ctrl-r:reload(" + q + " list)",
+		"--bind=change:reload-sync(" + q + " list --query {q})",
+		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
 		"--border",
 		"--header=Enter: switch | Ctrl-N: New | Ctrl-Z: Zed | Ctrl-T: Typora",
 		"--print-query", "--expect=ctrl-n",

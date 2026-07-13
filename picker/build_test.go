@@ -21,19 +21,55 @@ func (s stubEnricher) Window(session string, index int, _, _ string) WindowBadge
 // buildRows mirrors Build but takes an explicit window slice so we don't need a
 // running tmux server in the test.
 func buildRows(windows []tmuxcli.Window, e Enricher) string {
+	return buildRowsFiltered(windows, e, "")
+}
+
+func buildRowsFiltered(windows []tmuxcli.Window, e Enricher, query string) string {
 	if e == nil {
 		e = NoopEnricher{}
 	}
 	var b strings.Builder
 	prev := ""
+	var group []windowRow
+	flush := func(session string) {
+		if session == "" {
+			return
+		}
+		rows := filterGroup(session, group, query)
+		if len(rows) == 0 {
+			return
+		}
+		writeHeader(&b, session, groupSearch(rows))
+		for _, r := range rows {
+			writeWindowRow(&b, r)
+		}
+	}
 	for _, w := range windows {
 		if w.Session != prev {
-			writeHeader(&b, w.Session)
+			flush(prev)
+			group = group[:0]
 			prev = w.Session
 		}
-		writeWindow(&b, w, e.Window(w.Session, w.Index, w.Name, w.Command))
+		group = append(group, newWindowRow(w, e.Window(w.Session, w.Index, w.Name, w.Command)))
 	}
+	flush(prev)
 	return b.String()
+}
+
+func displayField(line string) string {
+	parts := strings.Split(line, "\t")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
+}
+
+func searchField(line string) string {
+	parts := strings.Split(line, "\t")
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
 }
 
 func TestBuildPlainWindows(t *testing.T) {
@@ -72,17 +108,17 @@ func TestBuildPlainWindows(t *testing.T) {
 	if !strings.Contains(lines[1], "(nvim)") {
 		t.Errorf("window row missing command: %q", lines[1])
 	}
-	// With no pane path, the dimmed row prefix falls back to "session:index".
-	if !strings.Contains(lines[1], Dim+"work:1"+Rst) {
-		t.Errorf("window row missing dim session:index fallback: %q", lines[1])
+	// Window rows show process first and keep session:index as dim context.
+	display := displayField(lines[1])
+	if !strings.Contains(display, Dim+"work:1"+Rst) {
+		t.Errorf("window row display should include dim session:index context: %q", lines[1])
 	}
 }
 
-// TestBuildHeaderAndRowPrefix asserts the header stays the session name (the
-// target for switching), while each window row's dimmed prefix shows that
-// window's own current-directory basename — even when windows in one session sit
-// in different directories. The row target stays "session:index".
-func TestBuildHeaderAndRowPrefix(t *testing.T) {
+// TestBuildHeaderAndRowPrefix asserts the header stays the session name and
+// window rows keep current directories out of the visible display. The row
+// target still stays "session:index", repeated as dim context after the process.
+func TestBuildWindowDisplayShowsProcessLabelWithWindowContext(t *testing.T) {
 	windows := []tmuxcli.Window{
 		{Session: "cli", Index: 1, Active: true, Name: "editor", Command: "nvim", Path: "/Users/dt/code/tmux-window-manager"},
 		{Session: "cli", Index: 3, Active: false, Name: "shell", Command: "zsh", Path: "/Users/dt/code/chatgpt-cli"},
@@ -91,26 +127,106 @@ func TestBuildHeaderAndRowPrefix(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 
 	// Header: target and display are both the session name.
-	target, display, _ := strings.Cut(lines[0], "\t")
+	target := strings.SplitN(lines[0], "\t", 2)[0]
+	display := displayField(lines[0])
 	if target != "cli" || !strings.Contains(display, "cli") {
 		t.Errorf("header = %q/%q, want session name \"cli\"", target, display)
 	}
 
-	// Row 1: target is cli:1, but the dimmed prefix shows its directory basename.
+	// Row 1: target is cli:1. Display starts with the process label, then adds
+	// dim session:index context, and never includes cwd.
 	if tgt := strings.SplitN(lines[1], "\t", 2)[0]; tgt != "cli:1" {
 		t.Errorf("row 1 target = %q, want \"cli:1\"", tgt)
 	}
-	if !strings.Contains(lines[1], Dim+"tmux-window-manager:1"+Rst) {
-		t.Errorf("row 1 missing dir prefix \"tmux-window-manager:1\": %q", lines[1])
+	display1 := displayField(lines[1])
+	if strings.Contains(display1, "tmux-window-manager") {
+		t.Errorf("row 1 should not include current dir: %q", lines[1])
+	}
+	if !strings.Contains(display1, "editor") || !strings.Contains(display1, "(nvim)") {
+		t.Errorf("row 1 display should include process label: %q", lines[1])
+	}
+	if !strings.Contains(display1, Dim+"cli:1"+Rst) {
+		t.Errorf("row 1 display should include dim window context: %q", lines[1])
+	}
+	if strings.Index(display1, "editor") > strings.Index(display1, "cli:1") {
+		t.Errorf("row 1 process label should come before window context: %q", lines[1])
 	}
 
-	// Row 2 is in a different directory within the same session, so its prefix
-	// reflects that directory, not the session or the first window's directory.
+	// Row 2 is in a different directory within the same session, but display
+	// still shows process plus window context, never cwd.
 	if tgt := strings.SplitN(lines[2], "\t", 2)[0]; tgt != "cli:3" {
 		t.Errorf("row 2 target = %q, want \"cli:3\"", tgt)
 	}
-	if !strings.Contains(lines[2], Dim+"chatgpt-cli:3"+Rst) {
-		t.Errorf("row 2 missing dir prefix \"chatgpt-cli:3\": %q", lines[2])
+	display2 := displayField(lines[2])
+	if strings.Contains(display2, "chatgpt-cli") {
+		t.Errorf("row 2 should not include current dir: %q", lines[2])
+	}
+	if !strings.Contains(display2, "shell") || !strings.Contains(display2, "(zsh)") {
+		t.Errorf("row 2 display should include process label: %q", lines[2])
+	}
+	if !strings.Contains(display2, Dim+"cli:3"+Rst) {
+		t.Errorf("row 2 display should include dim window context: %q", lines[2])
+	}
+	if strings.Index(display2, "shell") > strings.Index(display2, "cli:3") {
+		t.Errorf("row 2 process label should come before window context: %q", lines[2])
+	}
+}
+
+func TestBuildHeaderSearchIncludesChildWindowTerms(t *testing.T) {
+	windows := []tmuxcli.Window{
+		{Session: "vc-api-emr", Index: 1, Name: "claude", Command: "node"},
+		{Session: "vc-page-admin", Index: 1, Name: "node", Command: "node"},
+		{Session: "vc-page-admin", Index: 2, Name: "claude", Command: "node"},
+	}
+	e := stubEnricher{
+		windows: map[string]WindowBadge{
+			"vc-api-emr:1":    {AgentLabel: "claude(claude-opus-4-8)", Status: store.Waiting},
+			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Running},
+		},
+	}
+	out := buildRows(windows, e)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	if got := displayField(lines[0]); !strings.Contains(got, "vc-api-emr") || strings.Contains(got, "claude") {
+		t.Errorf("header display should stay group-only, got %q", got)
+	}
+	if got := searchField(lines[0]); !strings.Contains(got, "claude") || !strings.Contains(got, "vc-api-emr:1") {
+		t.Errorf("header search should include child claude row terms, got %q", got)
+	}
+
+	if got := displayField(lines[2]); !strings.Contains(got, "vc-page-admin") || strings.Contains(got, "claude") {
+		t.Errorf("second header display should stay group-only, got %q", got)
+	}
+	if got := searchField(lines[2]); !strings.Contains(got, "claude") || !strings.Contains(got, "vc-page-admin:2") {
+		t.Errorf("second header search should include child claude row terms, got %q", got)
+	}
+}
+
+func TestBuildFilteredPreservesMatchingGroups(t *testing.T) {
+	windows := []tmuxcli.Window{
+		{Session: "vc-api-emr", Index: 1, Name: "claude", Command: "node"},
+		{Session: "vc-page-admin", Index: 1, Name: "node", Command: "node"},
+		{Session: "vc-page-admin", Index: 2, Name: "claude", Command: "node"},
+		{Session: "vc-page-emr", Index: 1, Name: "node", Command: "node"},
+	}
+	e := stubEnricher{
+		windows: map[string]WindowBadge{
+			"vc-api-emr:1":    {AgentLabel: "claude(claude-opus-4-8)", Status: store.Waiting},
+			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Running},
+		},
+	}
+	out := buildRowsFiltered(windows, e, "claude")
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	targets := make([]string, len(lines))
+	for i, line := range lines {
+		targets[i] = strings.SplitN(line, "\t", 2)[0]
+	}
+	want := []string{"vc-api-emr", "vc-api-emr:1", "vc-page-admin", "vc-page-admin:2"}
+	if strings.Join(targets, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("filtered targets = %#v, want %#v\n%s", targets, want, out)
+	}
+	if strings.Contains(out, "vc-page-admin:1") || strings.Contains(out, "vc-page-emr") {
+		t.Fatalf("filtered output should omit non-matching child rows/groups:\n%s", out)
 	}
 }
 
@@ -125,7 +241,7 @@ func TestBuildAgentBadges(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 
 	// Session header is plain: just the session name, no agent badge or icon.
-	if strings.Contains(lines[0], Robot) || strings.Contains(lines[0], "claude(opus)") {
+	if got := displayField(lines[0]); strings.Contains(got, Robot) || strings.Contains(got, "claude(opus)") {
 		t.Errorf("header should be plain, got: %q", lines[0])
 	}
 	// Window row shows agent label + robot + status text.
