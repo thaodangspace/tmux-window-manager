@@ -1,6 +1,6 @@
-// Package dirs lists candidate directories for the "new session" picker,
-// natively replacing the script's `fd` invocations so the only external runtime
-// dependencies remain tmux and fzf.
+// Package dirs lists Git repository directory candidates for the "new session"
+// picker, natively replacing the script's `fd` invocations so the only external
+// runtime dependencies remain tmux and fzf.
 package dirs
 
 import (
@@ -10,9 +10,10 @@ import (
 	"strings"
 )
 
-// List returns the directory candidates, in the same order and with the same
-// scope as the script's list_directories: the current dir, $HOME, a deep walk
-// of ~/code and ~/go, then the top-level children of $HOME. Duplicates are
+// List returns Git repository directory candidates, in the same order and with
+// the same scope as the script's list_directories: the current dir, $HOME, a
+// deep walk of ~/code and ~/go, then the top-level children of $HOME. A
+// candidate is emitted only when it has a direct .git entry. Duplicates are
 // removed, keeping first occurrence (the awk '!seen[$0]++').
 func List(currentDir string) []string {
 	home, _ := os.UserHomeDir()
@@ -20,7 +21,7 @@ func List(currentDir string) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(p string) {
-		if p == "" || seen[p] {
+		if p == "" || seen[p] || !isGitRepo(p) {
 			return
 		}
 		seen[p] = true
@@ -90,6 +91,11 @@ func walkDirs(root string, maxDepth int, exclude map[string]bool, includeHidden 
 func isDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
+}
+
+func isGitRepo(p string) bool {
+	_, err := os.Stat(filepath.Join(p, ".git"))
+	return err == nil
 }
 
 func set(items ...string) map[string]bool {
