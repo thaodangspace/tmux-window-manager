@@ -23,8 +23,8 @@ func TestWindowBadgeRequiresLiveAgentProcess(t *testing.T) {
 	det := agents.NewDetectorFromSnapshot("100 1 zsh\n101 100 claude\n200 1 zsh\n201 200 go\n")
 	e := newLiveEnricher(live, panes, det)
 
-	if b := e.Window("cli", 1, "", ""); b.AgentLabel != "claude(opus)" {
-		t.Errorf("window 1 badge = %q, want %q", b.AgentLabel, "claude(opus)")
+	if b := e.Window("cli", 1, "", ""); b.AgentLabel != "claude(opus)" || b.PaneLabel != "claude" {
+		t.Errorf("window 1 badge = %q/%q, want %q/%q", b.AgentLabel, b.PaneLabel, "claude(opus)", "claude")
 	}
 	if b := e.Window("cli", 2, "", ""); b.AgentLabel != "" {
 		t.Errorf("window 2 (bare shell) should have no badge, got %q", b.AgentLabel)
@@ -46,11 +46,11 @@ func TestTwoAgentsSameDirStayDistinct(t *testing.T) {
 	det := agents.NewDetectorFromSnapshot("300 1 zsh\n301 300 codex\n400 1 zsh\n401 400 claude\n")
 	e := newLiveEnricher(live, panes, det)
 
-	if b := e.Window("cli", 1, "", ""); b.AgentLabel != "codex" {
-		t.Errorf("window 1 badge = %q, want %q", b.AgentLabel, "codex")
+	if b := e.Window("cli", 1, "", ""); b.AgentLabel != "codex" || b.PaneLabel != "codex" {
+		t.Errorf("window 1 badge = %q/%q, want %q/%q", b.AgentLabel, b.PaneLabel, "codex", "codex")
 	}
-	if b := e.Window("cli", 2, "", ""); b.AgentLabel != "claude(claude-opus-4-8)" {
-		t.Errorf("window 2 badge = %q, want %q", b.AgentLabel, "claude(claude-opus-4-8)")
+	if b := e.Window("cli", 2, "", ""); b.AgentLabel != "claude(claude-opus-4-8)" || b.PaneLabel != "claude" {
+		t.Errorf("window 2 badge = %q/%q, want %q/%q", b.AgentLabel, b.PaneLabel, "claude(claude-opus-4-8)", "claude")
 	}
 }
 
@@ -65,8 +65,8 @@ func TestBadgeFromDetectorWithoutStatusRow(t *testing.T) {
 	e := newLiveEnricher(nil, panes, det)
 
 	b := e.Window("cli", 1, "", "")
-	if b.AgentLabel != "codex" {
-		t.Errorf("badge = %q, want %q", b.AgentLabel, "codex")
+	if b.AgentLabel != "codex" || b.PaneLabel != "codex" {
+		t.Errorf("badge = %q/%q, want %q/%q", b.AgentLabel, b.PaneLabel, "codex", "codex")
 	}
 	if b.Status != "" {
 		t.Errorf("status = %q, want empty (no status row yet)", b.Status)
