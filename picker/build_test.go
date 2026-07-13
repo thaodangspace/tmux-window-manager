@@ -74,9 +74,9 @@ func searchField(line string) string {
 
 func TestBuildPlainWindows(t *testing.T) {
 	windows := []tmuxcli.Window{
-		{Session: "work", Index: 1, Active: true, Name: "editor", Command: "nvim"},
-		{Session: "work", Index: 2, Active: false, Name: "shell", Command: "zsh"},
-		{Session: "logs", Index: 1, Active: false, Name: "tail", Command: "less"},
+		{Session: "work", Index: 1, Active: true, Name: "editor", Command: "nvim", Path: "/Users/dt/code/app"},
+		{Session: "work", Index: 2, Active: false, Name: "shell", Command: "zsh", Path: "/Users/dt/code/api"},
+		{Session: "logs", Index: 1, Active: false, Name: "tail", Command: "less", Path: "/var/log"},
 	}
 	out := buildRows(windows, NoopEnricher{})
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -104,21 +104,25 @@ func TestBuildPlainWindows(t *testing.T) {
 	if strings.Contains(lines[2], "●") {
 		t.Errorf("idle window row should not have a dot: %q", lines[2])
 	}
-	// Idle window shows "(cmd)" dim.
-	if !strings.Contains(lines[1], "(nvim)") {
-		t.Errorf("window row missing command: %q", lines[1])
-	}
-	// Window rows show process first and keep session:index as dim context.
+	// Window rows mirror the tmux status-panel label: basename(cwd)/label.
 	display := displayField(lines[1])
-	if !strings.Contains(display, Dim+"work:1"+Rst) {
-		t.Errorf("window row display should include dim session:index context: %q", lines[1])
+	if !strings.Contains(display, "app/nvim") {
+		t.Errorf("window row missing status-panel label: %q", lines[1])
+	}
+	if strings.Contains(display, "work:1") || strings.Contains(display, "editor") {
+		t.Errorf("window row display should not include target or raw window_name: %q", lines[1])
+	}
+	// Hidden search still carries command, raw window name, path, and target for filtering/switching.
+	if got := searchField(lines[1]); !strings.Contains(got, "work:1") || !strings.Contains(got, "nvim") || !strings.Contains(got, "editor") || !strings.Contains(got, "/Users/dt/code/app") {
+		t.Errorf("window row hidden search should include target, command, window name, and path: %q", lines[1])
 	}
 }
 
 // TestBuildHeaderAndRowPrefix asserts the header stays the session name and
-// window rows keep current directories out of the visible display. The row
-// target still stays "session:index", repeated as dim context after the process.
-func TestBuildWindowDisplayShowsProcessLabelWithWindowContext(t *testing.T) {
+// window rows mirror tmux's status-panel label while keeping raw window names
+// and session:index targets out of the visible display. The hidden row target
+// still stays "session:index".
+func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.T) {
 	windows := []tmuxcli.Window{
 		{Session: "cli", Index: 1, Active: true, Name: "editor", Command: "nvim", Path: "/Users/dt/code/tmux-window-manager"},
 		{Session: "cli", Index: 3, Active: false, Name: "shell", Command: "zsh", Path: "/Users/dt/code/chatgpt-cli"},
@@ -133,42 +137,43 @@ func TestBuildWindowDisplayShowsProcessLabelWithWindowContext(t *testing.T) {
 		t.Errorf("header = %q/%q, want session name \"cli\"", target, display)
 	}
 
-	// Row 1: target is cli:1. Display starts with the process label, then adds
-	// dim session:index context, and never includes cwd.
+	// Row 1: target is cli:1. Display shows basename(cwd)/label and never
+	// includes the full cwd, raw window name, or visible session:index context.
 	if tgt := strings.SplitN(lines[1], "\t", 2)[0]; tgt != "cli:1" {
 		t.Errorf("row 1 target = %q, want \"cli:1\"", tgt)
 	}
 	display1 := displayField(lines[1])
-	if strings.Contains(display1, "tmux-window-manager") {
-		t.Errorf("row 1 should not include current dir: %q", lines[1])
+	if strings.Contains(display1, "/Users/dt/code") {
+		t.Errorf("row 1 visible display should not include full current dir: %q", lines[1])
 	}
-	if !strings.Contains(display1, "editor") || !strings.Contains(display1, "(nvim)") {
-		t.Errorf("row 1 display should include process label: %q", lines[1])
+	if !strings.Contains(display1, "tmux-window-manager/nvim") {
+		t.Errorf("row 1 display should include status-panel label: %q", lines[1])
 	}
-	if !strings.Contains(display1, Dim+"cli:1"+Rst) {
-		t.Errorf("row 1 display should include dim window context: %q", lines[1])
+	if strings.Contains(display1, "editor") || strings.Contains(display1, "cli:1") || strings.Contains(display1, "/Users/dt/code") {
+		t.Errorf("row 1 display should not include raw window name, visible window context, or full cwd: %q", lines[1])
 	}
-	if strings.Index(display1, "editor") > strings.Index(display1, "cli:1") {
-		t.Errorf("row 1 process label should come before window context: %q", lines[1])
+	if got := searchField(lines[1]); !strings.Contains(got, "cli:1") || !strings.Contains(got, "nvim") || !strings.Contains(got, "editor") {
+		t.Errorf("row 1 hidden search should include window context, command, and raw window name: %q", lines[1])
 	}
 
 	// Row 2 is in a different directory within the same session, but display
-	// still shows process plus window context, never cwd.
+	// still shows the same status-panel label shape, never full cwd, raw window
+	// name, or visible session:index.
 	if tgt := strings.SplitN(lines[2], "\t", 2)[0]; tgt != "cli:3" {
 		t.Errorf("row 2 target = %q, want \"cli:3\"", tgt)
 	}
 	display2 := displayField(lines[2])
-	if strings.Contains(display2, "chatgpt-cli") {
-		t.Errorf("row 2 should not include current dir: %q", lines[2])
+	if strings.Contains(display2, "/Users/dt/code") {
+		t.Errorf("row 2 visible display should not include full current dir: %q", lines[2])
 	}
-	if !strings.Contains(display2, "shell") || !strings.Contains(display2, "(zsh)") {
-		t.Errorf("row 2 display should include process label: %q", lines[2])
+	if !strings.Contains(display2, "chatgpt-cli/zsh") {
+		t.Errorf("row 2 display should include status-panel label: %q", lines[2])
 	}
-	if !strings.Contains(display2, Dim+"cli:3"+Rst) {
-		t.Errorf("row 2 display should include dim window context: %q", lines[2])
+	if strings.Contains(display2, "shell") || strings.Contains(display2, "cli:3") || strings.Contains(display2, "/Users/dt/code") {
+		t.Errorf("row 2 display should not include raw window name, visible window context, or full cwd: %q", lines[2])
 	}
-	if strings.Index(display2, "shell") > strings.Index(display2, "cli:3") {
-		t.Errorf("row 2 process label should come before window context: %q", lines[2])
+	if got := searchField(lines[2]); !strings.Contains(got, "cli:3") || !strings.Contains(got, "zsh") || !strings.Contains(got, "shell") {
+		t.Errorf("row 2 hidden search should include window context, command, and raw window name: %q", lines[2])
 	}
 }
 
@@ -232,10 +237,10 @@ func TestBuildFilteredPreservesMatchingGroups(t *testing.T) {
 
 func TestBuildAgentBadges(t *testing.T) {
 	windows := []tmuxcli.Window{
-		{Session: "ai", Index: 1, Active: true, Name: "claude", Command: "node"},
+		{Session: "ai", Index: 1, Active: true, Name: "node", Command: "node", Path: "/Users/dt/code/tmux-window-manager"},
 	}
 	e := stubEnricher{
-		windows: map[string]WindowBadge{"ai:1": {AgentLabel: "claude(opus)", Status: store.Running}},
+		windows: map[string]WindowBadge{"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Running}},
 	}
 	out := buildRows(windows, e)
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -244,12 +249,20 @@ func TestBuildAgentBadges(t *testing.T) {
 	if got := displayField(lines[0]); strings.Contains(got, Robot) || strings.Contains(got, "claude(opus)") {
 		t.Errorf("header should be plain, got: %q", lines[0])
 	}
-	// Window row shows agent label + robot + status text.
-	if !strings.Contains(lines[1], "claude(opus)") {
-		t.Errorf("window row missing agent name/model: %q", lines[1])
+	// Window row shows the status-panel label, robot, and status text; the custom
+	// agent/model label remains hidden search metadata only.
+	display := displayField(lines[1])
+	if !strings.Contains(display, "tmux-window-manager/claude") {
+		t.Errorf("window row missing status-panel label: %q", lines[1])
+	}
+	if strings.Contains(display, "claude(opus)") || strings.Contains(display, "ai:1") || strings.Contains(display, "node") {
+		t.Errorf("window row display should not include agent/model, target, or raw command/window name: %q", lines[1])
 	}
 	if !strings.Contains(lines[1], Robot) || !strings.Contains(lines[1], Italic+"running") {
 		t.Errorf("window row missing robot/running text: %q", lines[1])
+	}
+	if got := searchField(lines[1]); !strings.Contains(got, "claude(opus)") || !strings.Contains(got, "ai:1") || !strings.Contains(got, "node") {
+		t.Errorf("window row hidden search should include agent/model, target, and command: %q", lines[1])
 	}
 }
 

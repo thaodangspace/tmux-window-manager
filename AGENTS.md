@@ -38,9 +38,9 @@ store/      SQLite status persistence (the event-driven status source)
   store.go       schema, Upsert/Delete, LiveByCwd (pid-liveness + lazy reap)
   alive.go       kill(pid,0) liveness (unix)
 picker/     list row building + fzf invocation
-  build.go     rows; Enricher iface; status -> glyph (running/waiting/idle)
+  build.go     rows; Enricher iface; visible status-panel-label/bot/status format
   enrich.go    LiveEnricher: pane paths + status map -> badges (pure lookups)
-  color.go     ANSI palette (Loader spinner, Waiting bell)
+  color.go     ANSI palette (robot icon + running/waiting status text)
   fzf.go       fzf option assembly, ShellQuote, selection temp-file paths
 dirs/       native Git-repo directory lister for Ctrl-N (replaces fd)
 preview/    preview rendering (stacked panes; pane-names via process detection)
@@ -84,6 +84,12 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   is undone when the popup closes, so the popup writes the selection + fzf exit
   code to `$TMPDIR/tmux_wm_{sel,err}_<client>.txt` and the outer `run` acts after
   the popup closes. Client `/` is sanitized to `_` in the filename.
+- **Picker row display mirrors the tmux status panel.** Session headers remain
+  the group label; window rows keep `session:index`, raw `window_name`, command,
+  path, and model-enriched agent labels only as hidden fzf target/search terms.
+  The visible row is the same shape as the status bar label —
+  `basename(pane_current_path)/label` where `label` is the detected agent name or
+  `pane_current_command` fallback — plus optional `🤖 - status`.
 - **Ctrl-N directory suggestions are Git repos only.** The new-session picker
   still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
   `$HOME` top-level children), but emits only candidates with a direct `.git`
@@ -97,10 +103,12 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
 ## Verifying parity
 
 The original script lives in the dotfiles repo
-(`scripts/tmux_window_manager.sh`). The picker *layout* still mirrors it
-(`label`, `preview`, plain-window rows), but agent **status** is now event-driven
-rather than polled, so the live badges intentionally differ (running spinner vs
-waiting bell vs idle, sourced from the DB).
+(`scripts/tmux_window_manager.sh`). The picker keeps the same overall grouped
+shape (`label`, `preview`, plain-window rows), but visible window rows now mirror
+the tmux status-panel label plus bot/status instead of repeating `session:index`
+or showing raw/model-enriched labels. Agent **status** is event-driven rather
+than polled, so live badges intentionally differ (running/waiting text vs idle,
+sourced from the DB).
 
 ## Tests
 

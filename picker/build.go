@@ -2,6 +2,7 @@ package picker
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -20,7 +21,8 @@ import (
 
 // WindowBadge describes the agent state of a single window.
 type WindowBadge struct {
-	AgentLabel string // "claude(opus)" when an agent runs here; empty otherwise
+	AgentLabel string // "claude(opus)" when an agent runs here; hidden search metadata
+	PaneLabel  string // "claude"/"pi" as shown by the status-bar label command
 	Status     string // store status for this window's agent
 }
 
@@ -97,7 +99,9 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 type windowRow struct {
 	target string
 	dot    string
-	label  string
+	name   string
+	robot  string
+	status string
 	search string
 }
 
@@ -107,13 +111,11 @@ func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
 		dot = Green + "●" + Rst + " "
 	}
 
-	// When an agent runs in this window, its label and status text replace the
-	// (usually uninformative) pane command; otherwise show name + command.
-	var label string
+	robot := ""
+	status := ""
 	if wb.AgentLabel != "" {
-		label = Dim + wb.AgentLabel + Rst + Robot + statusText(wb.Status)
-	} else {
-		label = w.Name + " " + Dim + "(" + w.Command + ")" + Rst
+		robot = strings.TrimPrefix(Robot, " ")
+		status = strings.TrimPrefix(statusText(wb.Status), " ")
 	}
 
 	idx := strconv.Itoa(w.Index)
@@ -121,9 +123,29 @@ func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
 	return windowRow{
 		target: target,
 		dot:    dot,
-		label:  label,
-		search: cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, wb.AgentLabel, wb.Status}, " ")),
+		name:   statusPanelName(w, wb),
+		robot:  robot,
+		status: status,
+		search: cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, w.Path, wb.AgentLabel, wb.PaneLabel, wb.Status}, " ")),
 	}
+}
+
+func statusPanelName(w tmuxcli.Window, wb WindowBadge) string {
+	base := w.Name
+	if w.Path != "" {
+		base = filepath.Base(w.Path)
+	}
+	label := w.Command
+	if wb.PaneLabel != "" {
+		label = wb.PaneLabel
+	}
+	if label == "" {
+		return base
+	}
+	if base == "" {
+		return label
+	}
+	return base + "/" + label
 }
 
 func writeHeader(b *strings.Builder, session, search string) {
@@ -133,9 +155,16 @@ func writeHeader(b *strings.Builder, session, search string) {
 
 func writeWindowRow(b *strings.Builder, r windowRow) {
 	// The hidden target stays "session:index" so selecting the row switches to
-	// the right window. Keep the process/agent as the primary label, with the
-	// window context as a dim suffix so filtered results remain identifiable.
-	fmt.Fprintf(b, "%s\t   %s%s %s%s%s\t%s\n", r.target, r.dot, r.label, Dim, r.target, Rst, r.search)
+	// the right window, but the visible row avoids repeating that target or any
+	// custom process/agent/model label. Show tmux's window name, optional bot, and
+	// optional status in scan-friendly columns.
+	parts := make([]string, 0, 3)
+	for _, part := range []string{r.name, r.robot, r.status} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	fmt.Fprintf(b, "%s\t   %s%s\t%s\n", r.target, r.dot, strings.Join(parts, " - "), r.search)
 }
 
 func groupSearch(rows []windowRow) string {

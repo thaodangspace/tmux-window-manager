@@ -81,11 +81,12 @@ func (e *LiveEnricher) Window(session string, index int, _, _ string) WindowBadg
 		return WindowBadge{}
 	}
 	model, status := e.enrich(wa.pids)
-	label := strings.Join(wa.names, " ")
+	paneLabel := strings.Join(wa.names, " ")
+	label := paneLabel
 	if model != "" {
 		label += "(" + model + ")"
 	}
-	return WindowBadge{AgentLabel: label, Status: status}
+	return WindowBadge{AgentLabel: label, PaneLabel: paneLabel, Status: status}
 }
 
 // enrich folds the live status rows whose agent pid runs in this window into the
