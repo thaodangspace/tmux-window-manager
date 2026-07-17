@@ -90,6 +90,10 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   The visible row is the same shape as the status bar label —
   `basename(pane_current_path)/label` where `label` is the detected agent name or
   `pane_current_command` fallback — plus optional `🤖 - status`.
+- **Responsive preview.** The popup checks the launching tmux client's width;
+  clients narrower than 100 columns hide fzf's right-hand preview so the window
+  list can use the full popup width. If tmux cannot report a width, the preview
+  remains visible.
 - **Ctrl-N directory suggestions are Git repos only.** The new-session picker
   still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
   `$HOME` top-level children), but emits only candidates with a direct `.git`

@@ -194,6 +194,22 @@ func CapturePane(target string, withEscapes bool) (string, error) {
 	return run(args...)
 }
 
+// ClientWidth returns the width in columns of targetClient. A zero result means
+// tmux could not resolve the client or did not return a valid width.
+func ClientWidth(targetClient string) int {
+	args := []string{"display-message", "-p"}
+	if targetClient != "" {
+		args = append(args, "-c", targetClient)
+	}
+	args = append(args, "#{client_width}")
+	out, err := run(args...)
+	if err != nil {
+		return 0
+	}
+	width, _ := strconv.Atoi(strings.TrimSpace(out))
+	return width
+}
+
 // DisplayMessage prints a tmux format string evaluated against target (or the
 // active pane when target is empty) and returns the result.
 func DisplayMessage(target, format string) string {

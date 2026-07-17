@@ -20,7 +20,7 @@ func TestShellQuote(t *testing.T) {
 
 func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	self := "/path with spaces/tmux-window-manager"
-	opts := WindowFzfOptions(self)
+	opts := WindowFzfOptions(self, 160)
 	joined := strings.Join(opts, "\x00")
 
 	// The self path must appear shell-quoted in preview/reload/editor binds.
@@ -41,6 +41,36 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	if !strings.Contains(joined, "--expect=ctrl-n") || !strings.Contains(joined, "--print-query") {
 		t.Errorf("options missing expect/print-query: %v", opts)
 	}
+}
+
+func TestWindowFzfOptionsHidesPreviewOnNarrowClients(t *testing.T) {
+	tests := []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{name: "mobile sized", width: MinPreviewClientWidth - 1, want: "--preview-window=hidden"},
+		{name: "minimum desktop width", width: MinPreviewClientWidth, want: "--preview-window=right,60%,follow"},
+		{name: "unknown width", width: 0, want: "--preview-window=right,60%,follow"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := WindowFzfOptions("/usr/bin/twm", tt.width)
+			if !containsOption(opts, tt.want) {
+				t.Fatalf("options missing %q: %v", tt.want, opts)
+			}
+		})
+	}
+}
+
+func containsOption(opts []string, want string) bool {
+	for _, opt := range opts {
+		if opt == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSelectionFilesSanitizesClient(t *testing.T) {

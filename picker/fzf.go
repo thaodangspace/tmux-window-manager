@@ -17,17 +17,28 @@ func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// MinPreviewClientWidth is the smallest tmux client width that shows the
+// right-hand preview. Narrower clients are treated as mobile-sized so the
+// window list can use the full popup width.
+const MinPreviewClientWidth = 100
+
 // WindowFzfOptions builds the fzf arguments for the main window picker. self is
 // the path to this binary (os.Executable), embedded into the preview/reload/
-// editor bindings so fzf re-invokes the right subcommands.
-func WindowFzfOptions(self string) []string {
+// editor bindings so fzf re-invokes the right subcommands. A non-positive
+// clientWidth means the size could not be detected, so the preview remains
+// visible for backwards-compatible behavior.
+func WindowFzfOptions(self string, clientWidth int) []string {
 	q := ShellQuote(self)
+	previewWindow := "right,60%,follow"
+	if clientWidth > 0 && clientWidth < MinPreviewClientWidth {
+		previewWindow = "hidden"
+	}
 	return []string{
 		"--ansi", "--reverse", "--no-sort", "--prompt=window > ",
 		"--disabled",
 		"--delimiter=\t", "--with-nth=2",
 		"--preview=" + q + " preview {1}",
-		"--preview-window=right,60%,follow",
+		"--preview-window=" + previewWindow,
 		"--bind=ctrl-z:execute-silent(" + q + " open-editor zed {1})+abort," +
 			"ctrl-t:execute-silent(" + q + " open-editor typora {1})+abort",
 		"--bind=change:reload-sync(" + q + " list --query {q})",

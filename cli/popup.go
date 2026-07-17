@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/dtonair/tmux-window-manager/picker"
+	"github.com/dtonair/tmux-window-manager/tmuxcli"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,8 @@ func runPopup(client string) error {
 		return err
 	}
 
-	out, code, runErr := picker.RunFzf(rows, picker.WindowFzfOptions(self))
+	clientWidth := tmuxcli.ClientWidth(client)
+	out, code, runErr := picker.RunFzf(rows, picker.WindowFzfOptions(self, clientWidth))
 	if runErr != nil {
 		return runErr
 	}
