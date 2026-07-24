@@ -10,6 +10,14 @@ and `fzf`.
 It is a Go port of a personal `tmux_window_manager.sh` script; the port drops the
 script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
 
+![tmux-window-manager fuzzy picker with coding-agent status and pane preview](docs/SCR-20260724-pusx.png)
+
+<p align="center">
+  <img src="docs/SCR-20260724-pwqs.png" alt="Responsive tmux-window-manager picker on a narrow mobile display" width="360">
+  <br>
+  <em>Responsive narrow layout with the pane preview hidden.</em>
+</p>
+
 ## Features
 
 - **Fuzzy picker** across all sessions, grouped by session with a live preview
