@@ -160,6 +160,23 @@ func (db *DB) Upsert(s Status) error {
 	return tx.Commit()
 }
 
+// Get returns one status row by its primary key. found is false when the
+// session has no row.
+func (db *DB) Get(agent, sessionID string) (status Status, found bool, err error) {
+	err = db.sql.QueryRow(`SELECT agent, session_id, cwd, pid, status, detail,
+		model, prompt, latest_message, updated_at FROM agent_status
+		WHERE agent = ? AND session_id = ?`, agent, sessionID).Scan(
+		&status.Agent, &status.SessionID, &status.Cwd, &status.Pid, &status.Status,
+		&status.Detail, &status.Model, &status.Prompt, &status.Latest, &status.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return Status{}, false, nil
+	}
+	if err != nil {
+		return Status{}, false, err
+	}
+	return status, true, nil
+}
+
 // Delete removes a session's status row (used on SessionEnd and to reap dead
 // rows). Missing rows are not an error.
 func (db *DB) Delete(agent, sessionID string) error {

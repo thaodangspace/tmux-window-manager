@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dtonair/tmux-window-manager/dirs"
-	"github.com/dtonair/tmux-window-manager/picker"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/dirs"
+	"github.com/thaodangspace/tmux-window-manager/picker"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 	"github.com/spf13/cobra"
 )
 

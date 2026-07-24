@@ -8,8 +8,8 @@ code; update it when you introduce new modules, commands, or design decisions.
 A self-contained Go port of a `tmux_window_manager.sh` dotfiles script: a fuzzy
 tmux window switcher (`prefix + w`) shipped as a TPM plugin that builds its
 binary on install. The port replaces the script's `jq` / `awk` / `fd` / `t2`
-dependencies with native Go; the only external runtime deps are `tmux` and
-`fzf`.
+dependencies with native Go; the only external command dependencies are `tmux`
+and `fzf`. Optional Telegram notifications use the Bot API directly over HTTPS.
 
 ## Layout
 
@@ -24,7 +24,9 @@ cli/                              cobra command tree (one file per subcommand)
   preview.go   fzf preview
   label.go     status-bar agent name (process detection)
   openeditor.go Zed/Typora launch
-  hook.go      record an agent lifecycle event -> status DB (always exits 0)
+  hook.go      record an agent lifecycle event -> status DB; optional Telegram
+               side effect for Claude Notification/Stop (always exits 0)
+  serveattach.go hidden short-lived loopback tmux attach helper
   installhooks.go  merge hooks into ~/.claude/settings.json + Codex snippet
   status.go    debug dump of the status rows
 tmuxcli/    typed wrappers over the tmux CLI (one ps/tmux call shape per func)
@@ -35,8 +37,14 @@ agents/     agent detection + hook payload normalization
   hookpayload.go normalize Claude (stdin) / Codex (notify) payloads -> status
 store/      SQLite status persistence (the event-driven status source)
   path.go        canonical DB path ($TWM_DB_PATH / $XDG_STATE_HOME / ~/.local/state)
-  store.go       schema, Upsert/Delete, LiveByCwd (pid-liveness + lazy reap)
+  store.go       schema, Upsert/Get/Delete, LiveByCwd (pid-liveness + lazy reap)
   alive.go       kill(pid,0) liveness (unix)
+notify/     optional outbound lifecycle notifications
+  config.go     ~/.config/twm.toml + environment loading and precedence
+  telegram.go   safe message composition + Telegram sendMessage client
+attachlink/ short-lived, loopback-only single-use tmux focus capability
+  server.go     inert GET, token-gated POST, security headers, expiry
+  launcher_unix.go detached helper startup/readiness/cleanup lifecycle
 picker/     list row building + fzf invocation
   build.go     rows; Enricher iface; visible status-panel-label/bot/status format
   enrich.go    LiveEnricher: pane paths + status map -> badges (pure lookups)
@@ -52,7 +60,8 @@ tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm
 | Subcommand | Purpose |
 |------------|---------|
 | `run` / `popup` / `list` / `preview` / `label` / `open-editor` | the picker UI (ports of the original script modes) |
-| `hook [event] [--agent] [--codex]` | record one agent lifecycle event into the status DB |
+| `hook [event] [--agent] [--codex]` | record one lifecycle event; optionally notify Telegram for Claude Notification/Stop |
+| `serve-attach` | hidden one-shot helper for a loopback tmux focus link |
 | `install-hooks [--claude] [--codex] [--dry-run]` | wire the hooks into Claude/Codex config |
 | `status [--all]` | debug dump of the status rows |
 
@@ -80,6 +89,29 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   full-file scan); the first prompt comes straight from the `UserPromptSubmit`
   event. `proc.go` is still used for preview pane-names and the `label` command,
   but no longer drives picker status.
+- **Telegram is an optional post-DB side effect.** Credentials are loaded from
+  `[telegram]` in `~/.config/twm.toml` (or `$XDG_CONFIG_HOME/twm.toml`), with
+  non-empty `$TWM_TELEGRAM_BOT_TOKEN` / `$TWM_TELEGRAM_CHAT_ID` values overriding
+  the corresponding file fields. `Notification` and `Stop` hooks synchronously
+  call Bot API `sendMessage` after a successful status upsert. The client has a
+  2s timeout, no retry/outbox/daemon, MarkdownV2 messages (plain summary line,
+  bold detail labels) capped below Telegram's limit, and token-safe error
+  categories logged only with `$TWM_HOOK_DEBUG`.
+  Every message includes a status icon, project basename, session ID, and the
+  first user prompt; Notification also includes its detail, while Stop excludes
+  assistant response text. Full paths, other transcript content, PIDs, model
+  names, and credentials are not sent. Telegram failures never alter DB state
+  or the hook's zero exit status; Codex/Pi do not send Telegram messages.
+- **Telegram tmux attach links are tertiary best effort.** For an eligible Claude
+  notification, a live `TMUX_PANE` can start one detached `serve-attach` helper
+  after the DB write and Telegram configuration succeed. It binds only to
+  `127.0.0.1`, uses a 128-bit in-memory token, keeps GET inert, switches only
+  the most recently active existing tmux client on exact POST, and expires after
+  15 minutes or one successful switch. The token/target/client/path never enter
+  Telegram text, SQLite, or debug logs. Link creation and cleanup failures omit
+  only the link; they never fail the hook. This is for Telegram Desktop and a
+  browser on the same host; it does not launch Ghostty, create SSH sessions, or
+  provide a persistent daemon. Pi remains deferred.
 - **Popup → outer handoff via temp files.** `switch-client` from inside a popup
   is undone when the popup closes, so the popup writes the selection + fzf exit
   code to `$TMPDIR/tmux_wm_{sel,err}_<client>.txt` and the outer `run` acts after
@@ -119,8 +151,9 @@ sourced from the DB).
 `go test ./...` — table-driven coverage of the process-tree walk + `NearestAgent`
 ancestor walk, the transcript tail reader and parse helpers, hook payload
 normalization (Claude + Codex), the `store` layer (upsert/conflict-merge,
-`LiveByCwd` pid-liveness + reap, concurrency), the picker enricher + status
-glyphs, `install-hooks` idempotent merge, directory lister, fzf option assembly,
-switch command building, and PATH priming. The interactive popup/fzf path and the
-end-to-end hook → DB → badge flow are verified manually in a real tmux session
-(see the smoke tests in the PR).
+`LiveByCwd` pid-liveness + reap, concurrency), Telegram TOML/environment config precedence, composition/HTTP transport
+security and failures, hook → DB → optional notification ordering and
+filtering, the picker enricher + status glyphs, `install-hooks` idempotent merge,
+directory lister, fzf option assembly, switch command building, and PATH
+priming. The interactive popup/fzf path and the end-to-end hook → DB → badge flow
+are verified manually in a real tmux session (see the smoke tests in the PR).

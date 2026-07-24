@@ -5,7 +5,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/dtonair/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/store"
 	"github.com/spf13/cobra"
 )
 

@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 
-	"github.com/dtonair/tmux-window-manager/picker"
-	"github.com/dtonair/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/picker"
+	"github.com/thaodangspace/tmux-window-manager/store"
 	"github.com/spf13/cobra"
 )
 

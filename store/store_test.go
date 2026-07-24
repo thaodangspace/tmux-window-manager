@@ -83,6 +83,24 @@ func TestUpsertConflictUpdatesInPlace(t *testing.T) {
 	}
 }
 
+func TestGet(t *testing.T) {
+	db := openTemp(t)
+	want := Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: os.Getpid(), Status: Running, Prompt: "first prompt", UpdatedAt: 1}
+	if err := db.Upsert(want); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := db.Get("claude", "s")
+	if err != nil || !found {
+		t.Fatalf("Get existing = %+v, %v, %v", got, found, err)
+	}
+	if got.Agent != want.Agent || got.SessionID != want.SessionID || got.Prompt != want.Prompt {
+		t.Fatalf("Get existing = %+v, want key/prompt from %+v", got, want)
+	}
+	if got, found, err = db.Get("claude", "missing"); err != nil || found || got != (Status{}) {
+		t.Fatalf("Get missing = %+v, %v, %v", got, found, err)
+	}
+}
+
 func TestDelete(t *testing.T) {
 	db := openTemp(t)
 	db.Upsert(mk("claude", "s", "/w", os.Getpid(), Running, 1))

@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"github.com/dtonair/tmux-window-manager/cli"
+	"github.com/thaodangspace/tmux-window-manager/cli"
 )
 
 func main() {

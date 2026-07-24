@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/dtonair/tmux-window-manager/preview"
+	"github.com/thaodangspace/tmux-window-manager/preview"
 	"github.com/spf13/cobra"
 )
 

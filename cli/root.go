@@ -46,7 +46,7 @@ func (e *usageError) Unwrap() error { return e.err }
 var errNotImplemented = errors.New("not implemented")
 
 // version is the CLI version, overridden at build time via
-// -ldflags "-X github.com/dtonair/tmux-window-manager/cli.version=<value>".
+// -ldflags "-X github.com/thaodangspace/tmux-window-manager/cli.version=<value>".
 var version = "dev"
 
 func newRootCommand() *cobra.Command {
@@ -71,6 +71,7 @@ func newRootCommand() *cobra.Command {
 		newLabelCommand(),
 		newOpenEditorCommand(),
 		newHookCommand(),
+		newServeAttachCommand(),
 		newInstallHooksCommand(),
 		newStatusCommand(),
 	)

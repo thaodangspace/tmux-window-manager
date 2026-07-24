@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dtonair/tmux-window-manager/agents"
-	"github.com/dtonair/tmux-window-manager/picker"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/agents"
+	"github.com/thaodangspace/tmux-window-manager/picker"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // Render writes the preview for target (a "session:index" spec) to w.

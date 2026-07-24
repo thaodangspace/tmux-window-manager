@@ -7,6 +7,8 @@ package tmuxcli
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -24,6 +26,18 @@ func run(args ...string) (string, error) {
 	return string(out), err
 }
 
+// Client is one attached tmux client. Activity is tmux's unix timestamp for
+// the client's most recent activity.
+type Client struct {
+	Name     string
+	Activity int64
+}
+
+// ErrInvalidPaneID means a caller supplied something other than a canonical
+// tmux pane id. Pane IDs are intentionally narrower than tmux's general target
+// syntax so link activation cannot turn into arbitrary target selection.
+var ErrInvalidPaneID = errors.New("invalid tmux pane id")
+
 // Window is one tmux window across all sessions.
 type Window struct {
 	Session string
@@ -36,6 +50,95 @@ type Window struct {
 
 // ListWindows returns every window across all sessions, sorted by session name
 // then window index — matching the bash `tmux list-windows -a | sort` pipeline.
+func ListClients() ([]Client, error) {
+	const format = "#{client_name}" + sep + "#{client_activity}"
+	out, err := run("list-clients", "-F", format)
+	if err != nil {
+		return nil, err
+	}
+	return parseClients(out), nil
+}
+
+// parseClients parses tmux list-clients output. Invalid rows are ignored so a
+// transient or future format change cannot select an unintended client.
+func parseClients(out string) []Client {
+	var clients []Client
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.SplitN(line, sep, 2)
+		if len(fields) != 2 || strings.TrimSpace(fields[0]) == "" {
+			continue
+		}
+		activity, err := strconv.ParseInt(strings.TrimSpace(fields[1]), 10, 64)
+		if err != nil || activity < 0 {
+			continue
+		}
+		clients = append(clients, Client{Name: fields[0], Activity: activity})
+	}
+	return clients
+}
+
+// MostRecentClient returns the client with the greatest activity timestamp.
+// Name is the deterministic tie-breaker when tmux reports equal timestamps.
+func MostRecentClient(clients []Client) (Client, bool) {
+	if len(clients) == 0 {
+		return Client{}, false
+	}
+	best := clients[0]
+	for _, client := range clients[1:] {
+		if client.Activity > best.Activity ||
+			(client.Activity == best.Activity && client.Name < best.Name) {
+			best = client
+		}
+	}
+	return best, true
+}
+
+// ValidPaneID reports whether target is a canonical tmux pane id such as %20.
+func ValidPaneID(target string) bool {
+	if len(target) < 2 || target[0] != '%' {
+		return false
+	}
+	for _, r := range target[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// PaneExists asks tmux to resolve an exact pane ID and verifies that tmux
+// returned the same ID. It never accepts a session/window target expression.
+func PaneExists(target string) (bool, error) {
+	if !ValidPaneID(target) {
+		return false, ErrInvalidPaneID
+	}
+	out, err := run("display-message", "-p", "-t", target, "#{pane_id}")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == target, nil
+}
+
+// SwitchClientArgs returns the exact argv used to focus a pane in a client.
+func SwitchClientArgs(client, pane string) ([]string, error) {
+	if strings.TrimSpace(client) == "" || strings.ContainsAny(client, "\x00\r\n") {
+		return nil, fmt.Errorf("invalid tmux client name")
+	}
+	if !ValidPaneID(pane) {
+		return nil, ErrInvalidPaneID
+	}
+	return []string{"switch-client", "-c", client, "-t", pane}, nil
+}
+
+// SwitchClient focuses pane in an existing attached tmux client.
+func SwitchClient(client, pane string) error {
+	args, err := SwitchClientArgs(client, pane)
+	if err != nil {
+		return err
+	}
+	return Command(args...)
+}
+
 func ListWindows() ([]Window, error) {
 	const format = "#{session_name}" + sep + "#{window_index}" + sep +
 		"#{window_active}" + sep + "#{window_name}" + sep +

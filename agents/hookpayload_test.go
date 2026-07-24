@@ -3,7 +3,7 @@ package agents
 import (
 	"testing"
 
-	"github.com/dtonair/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/store"
 )
 
 func TestClaudeHookEventMapping(t *testing.T) {

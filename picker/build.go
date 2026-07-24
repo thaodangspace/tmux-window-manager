@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dtonair/tmux-window-manager/store"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // Each emitted row is "<target>\t<display>":

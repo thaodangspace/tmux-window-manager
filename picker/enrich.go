@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dtonair/tmux-window-manager/agents"
-	"github.com/dtonair/tmux-window-manager/store"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/agents"
+	"github.com/thaodangspace/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // LiveEnricher decorates the window list with agent badges. The agent *name*

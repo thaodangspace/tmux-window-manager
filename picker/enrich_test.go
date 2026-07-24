@@ -3,9 +3,9 @@ package picker
 import (
 	"testing"
 
-	"github.com/dtonair/tmux-window-manager/agents"
-	"github.com/dtonair/tmux-window-manager/store"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/agents"
+	"github.com/thaodangspace/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // TestWindowBadgeRequiresLiveAgentProcess guards against lighting up unrelated

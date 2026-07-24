@@ -4,8 +4,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/dtonair/tmux-window-manager/picker"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/picker"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 	"github.com/spf13/cobra"
 )
 

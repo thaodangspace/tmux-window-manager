@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dtonair/tmux-window-manager/store"
-	"github.com/dtonair/tmux-window-manager/tmuxcli"
+	"github.com/thaodangspace/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // stubEnricher lets tests inject badges without a live tmux/agent.
