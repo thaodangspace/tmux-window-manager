@@ -74,6 +74,19 @@ This runs the same build-on-install hook and key binding.
 go build -o bin/tmux-window-manager ./cmd/tmux-window-manager
 ```
 
+## Documentation
+
+The full user guide is an Astro/Starlight site under [`docs/`](docs/README.md).
+Run it locally or build its static output with:
+
+```bash
+make docs-dev
+make docs-build
+```
+
+The docs include picker controls, agent status setup, Telegram security details,
+troubleshooting, and Cloudflare Pages deployment settings.
+
 ## Configuration
 
 | Option        | Default | Purpose                                              |

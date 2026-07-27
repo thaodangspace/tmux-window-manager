@@ -1,0 +1,60 @@
+---
+title: tmux-window-manager
+description: Switch tmux windows quickly and see which coding agents need attention.
+template: splash
+hero:
+  tagline: A fuzzy tmux window switcher with event-driven coding-agent status.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: Configure agent status
+      link: /agent-status/
+      icon: setting
+---
+
+import { Image } from 'astro:assets';
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import pickerScreenshot from '../../assets/picker.png';
+import narrowScreenshot from '../../assets/picker-narrow.png';
+
+`tmux-window-manager` is a TPM plugin and self-contained Go binary. Press
+`prefix + w` to search every tmux window, inspect pane previews, and switch
+without leaving the keyboard. Coding agents can report whether they are working
+or waiting for you, without polling pane text.
+
+<CardGrid stagger>
+  <Card title="Switch quickly" icon="rocket">
+    Search windows across sessions in a grouped fzf picker with a live pane preview.
+  </Card>
+  <Card title="See agent state" icon="information">
+    Claude and Codex hooks write lifecycle state to a local SQLite database, powering working and waiting badges.
+  </Card>
+  <Card title="Stay in control" icon="setting">
+    Create sessions, open project directories, refresh status, and optionally receive privacy-conscious Telegram notifications.
+  </Card>
+</CardGrid>
+
+<Image
+  src={pickerScreenshot}
+  alt="tmux-window-manager picker showing grouped windows, agent status, and pane preview"
+  loading="eager"
+/>
+
+:::note[Responsive on narrow clients]
+When the launching tmux client is narrower than 100 columns, the picker hides
+its right-hand preview so the window list can use the available width.
+:::
+
+<Image
+  src={narrowScreenshot}
+  alt="tmux-window-manager picker in its narrow layout without a pane preview"
+  widths={[320, 480]}
+  sizes="(max-width: 30rem) 100vw, 30rem"
+/>
+
+## Runtime requirements
+
+The plugin supports macOS and Linux. It requires tmux 3.2 or newer, `fzf`, and
+Go 1.25 or newer for the build-on-install step. At runtime, the only external
+commands used by the picker are `tmux` and `fzf`.

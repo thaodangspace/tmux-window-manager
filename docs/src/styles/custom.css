@@ -1,0 +1,17 @@
+:root {
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0f766e;
+  --sl-color-accent-high: #134e4a;
+}
+
+[data-theme='dark'] {
+  --sl-color-accent-low: #134e4a;
+  --sl-color-accent: #5eead4;
+  --sl-color-accent-high: #ccfbf1;
+}
+
+.hero img {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  box-shadow: var(--sl-shadow-md);
+}

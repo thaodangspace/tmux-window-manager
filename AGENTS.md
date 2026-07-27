@@ -52,6 +52,11 @@ picker/     list row building + fzf invocation
   fzf.go       fzf option assembly, ShellQuote, selection temp-file paths
 dirs/       native Git-repo directory lister for Ctrl-N (replaces fd)
 preview/    preview rendering (stacked panes; pane-names via process detection)
+docs/       isolated Astro/Starlight static documentation site
+  src/content/docs/ user guides and reference pages
+  src/assets/       docs-owned copies of picker screenshots
+  public/_headers   Cloudflare Pages response headers
+  plans/            pre-existing implementation plans (not Astro content)
 tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm_bin
 ```
 
@@ -135,6 +140,12 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
 - **Build-on-install.** `tmux-window-manager.tmux` rebuilds when the binary is
   missing or older than any `.go` file, and publishes the binary path as the
   `@twm_bin` tmux option so status-bar formats can call it.
+- **Docs are an isolated static app.** `docs/` owns its Astro/Starlight npm
+  dependencies and lockfile; it does not participate in the Go build or access
+  tmux at build time. `SITE_URL` is optional and enables canonical URLs plus a
+  sitemap. Cloudflare Pages uses root `docs`, build command `npm run build`, and
+  output `dist`. Root `docs-*` Make targets are convenience wrappers. Generated
+  `.astro`, `node_modules`, and `dist` content is ignored.
 
 ## Verifying parity
 
@@ -157,3 +168,8 @@ filtering, the picker enricher + status glyphs, `install-hooks` idempotent merge
 directory lister, fzf option assembly, switch command building, and PATH
 priming. The interactive popup/fzf path and the end-to-end hook → DB → badge flow
 are verified manually in a real tmux session (see the smoke tests in the PR).
+
+Documentation verification uses `npm --prefix docs ci`,
+`npm --prefix docs run build`, and `npm audit --prefix docs --omit=dev`.
+`make docs-build` provides the clean-install production build shortcut. A build
+with `SITE_URL` set additionally verifies canonical and sitemap generation.
