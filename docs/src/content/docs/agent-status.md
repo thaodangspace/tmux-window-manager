@@ -72,8 +72,7 @@ tmux-window-manager status
 Include dead rows for debugging with `status --all`.
 
 :::important[Hooks never block the agent]
-The hook command always exits successfully. Database, payload, transcript, or
-optional notification failures cannot block Claude or Codex. Set
-`TWM_HOOK_DEBUG=1` before launching the agent to write redacted diagnostics to
-`$TMPDIR/twm_hook.log`.
+The hook command always exits successfully. Database, payload, or transcript
+failures cannot block Claude or Codex. Set `TWM_HOOK_DEBUG=1` before launching
+the agent to write redacted diagnostics to `$TMPDIR/twm_hook.log`.
 :::

@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Diagnose build, picker, hook, status, and notification problems.
+description: Diagnose build, picker, hook, and status problems.
 ---
 
 ## The plugin does not build
@@ -53,21 +53,3 @@ Normal picker and `status` reads verify the stored process ID and lazily remove
 dead rows. Use `status --all` to inspect all database rows. If a PID is still
 alive, the row remains eligible; end the originating agent session normally or
 investigate the recorded PID before deleting the database.
-
-## Telegram is silent
-
-Both `bot_token` and `chat_id` are required. Check the selected config path and
-remember that non-empty environment variables override file values. Environment
-changes require restarting Claude; TOML file changes do not.
-
-Only Claude `Notification` and `Stop` events are eligible. Codex and Pi do not
-send Telegram messages. Enable `TWM_HOOK_DEBUG=1` for redacted failure categories;
-tokens, destinations, response bodies, attach URLs, paths, and tmux targets are
-never written to that log.
-
-## An attach link does not work
-
-The link is single-use, expires after 15 minutes, and is reachable only from the
-same computer as tmux. It switches an already-running tmux client; it cannot
-open a terminal or connect from a phone. If the pane no longer exists, the
-session is reported unavailable.

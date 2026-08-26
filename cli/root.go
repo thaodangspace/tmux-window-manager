@@ -71,7 +71,6 @@ func newRootCommand() *cobra.Command {
 		newLabelCommand(),
 		newOpenEditorCommand(),
 		newHookCommand(),
-		newServeAttachCommand(),
 		newInstallHooksCommand(),
 		newStatusCommand(),
 	)

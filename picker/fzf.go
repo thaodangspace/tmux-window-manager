@@ -44,8 +44,8 @@ func WindowFzfOptions(self string, clientWidth int) []string {
 		"--bind=change:reload-sync(" + q + " list --query {q})",
 		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
 		"--border",
-		"--header=Enter: switch | Ctrl-N: New | Ctrl-Z: Zed | Ctrl-T: Typora",
-		"--print-query", "--expect=ctrl-n",
+		"--header=Enter: switch | Ctrl-X: Close | Ctrl-N: New | Ctrl-Z: Zed | Ctrl-T: Typora",
+		"--print-query", "--expect=ctrl-n,ctrl-x",
 	}
 }
 

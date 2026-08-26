@@ -37,9 +37,12 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	if !strings.Contains(joined, "--disabled") {
 		t.Errorf("options should disable built-in filtering: %v", opts)
 	}
-	// Expect-key and print-query must be present for the run-side parser.
-	if !strings.Contains(joined, "--expect=ctrl-n") || !strings.Contains(joined, "--print-query") {
+	// Expected keys and print-query must be present for the run-side parser.
+	if !strings.Contains(joined, "--expect=ctrl-n,ctrl-x") || !strings.Contains(joined, "--print-query") {
 		t.Errorf("options missing expect/print-query: %v", opts)
+	}
+	if !strings.Contains(joined, "Ctrl-X: Close") {
+		t.Errorf("options missing close-session help: %v", opts)
 	}
 }
 

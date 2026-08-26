@@ -25,6 +25,30 @@ func TestResolvePath(t *testing.T) {
 	}
 }
 
+func TestKillSessionCommand(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+		want   []string
+	}{
+		{"session header", "alpha", []string{"kill-session", "-t", "alpha"}},
+		{"window row", "beta:2", []string{"kill-session", "-t", "beta"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := killSessionCommand(tt.target)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("arg %d: got %q want %q\nfull: %v", i, got[i], tt.want[i], got)
+				}
+			}
+		})
+	}
+}
+
 func TestSwitchCommand(t *testing.T) {
 	tests := []struct {
 		name           string

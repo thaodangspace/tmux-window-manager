@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/thaodangspace/tmux-window-manager/dirs"
 	"github.com/thaodangspace/tmux-window-manager/picker"
 	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
-	"github.com/spf13/cobra"
 )
 
 func newRunCommand() *cobra.Command {
@@ -73,7 +73,23 @@ func runOuter(client string) error {
 	if target == "" {
 		return nil
 	}
+	if key == "ctrl-x" {
+		return killSession(target)
+	}
 	return switchTo(client, target)
+}
+
+// killSession kills the session represented by a session header or window row.
+func killSession(target string) error {
+	return tmuxcli.Command(killSessionCommand(target)...)
+}
+
+// killSessionCommand builds the tmux argv that kills the selected row's
+// containing session. Window targets use "session:index"; header targets are
+// already plain session names.
+func killSessionCommand(target string) []string {
+	session, _, _ := strings.Cut(target, ":")
+	return []string{"kill-session", "-t", session}
 }
 
 // switchTo switches the launching client to the selected target.

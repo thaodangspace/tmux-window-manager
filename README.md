@@ -27,8 +27,6 @@ script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
   **working** (`⟳`), **waiting on you** (`🔔`, e.g. a permission prompt), or idle
   — no process polling or pane-scraping. Run `tmux-window-manager install-hooks`
   once to wire it up.
-- **Optional Telegram notifications** — Claude can send a best-effort message
-  when it needs input or finishes a turn, without a resident daemon.
 - **Agent preview** — model and latest message, captured at hook time from
   Claude transcripts (`~/.claude/projects/**/*.jsonl`) and the Codex notify
   payload.
@@ -84,8 +82,8 @@ make docs-dev
 make docs-build
 ```
 
-The docs include picker controls, agent status setup, Telegram security details,
-troubleshooting, and Cloudflare Pages deployment settings.
+The docs include picker controls, agent status setup, troubleshooting, and
+Cloudflare Pages deployment settings.
 
 ## Configuration
 
@@ -113,7 +111,7 @@ The binary re-invokes itself for its internal modes; you normally only bind
 | `label <pid> [fallback]` | Print a pane's agent name (status bar) |
 | `open-editor <zed\|typora> <target>` | Open an editor on a window's path |
 | `install-hooks [--claude] [--codex] [--dry-run]` | Wire status hooks into Claude Code / Codex |
-| `hook [event]` | Record an agent lifecycle event and optionally notify Telegram |
+| `hook [event]` | Record an agent lifecycle event (called from Claude/Codex hooks) |
 | `status [--all]` | Dump the recorded agent status rows (debug) |
 
 ## Agent status setup
@@ -128,90 +126,6 @@ This idempotently merges `SessionStart` / `UserPromptSubmit` / `Notification` /
 `Stop` / `SessionEnd` hooks into `~/.claude/settings.json` (preserving your own
 hooks) and prints a `notify = [...]` line to add to `~/.codex/config.toml`. From
 then on, each agent reports its status as it works, and the picker reflects it.
-
-## Telegram notifications (optional)
-
-Create a Telegram bot and obtain the destination chat ID, then put both values
-in `~/.config/twm.toml`:
-
-```toml
-[telegram]
-bot_token = "<bot-token>"
-chat_id = "<chat-id>"
-```
-
-Protect the file because it contains the bot token:
-
-```bash
-chmod 600 ~/.config/twm.toml
-```
-
-When `$XDG_CONFIG_HOME` is set, the file is read from
-`$XDG_CONFIG_HOME/twm.toml` instead. Avoid putting the token in command
-arguments, shell history, or tracked configuration files.
-
-Environment variables remain supported and non-empty values override the
-corresponding file fields:
-
-```bash
-export TWM_TELEGRAM_BOT_TOKEN='<bot-token>'
-export TWM_TELEGRAM_CHAT_ID='<chat-id>'
-claude
-```
-
-Environment values must be set before launching Claude because hooks inherit
-that process's environment. The TOML file is read by each eligible hook, so file
-changes do not require restarting Claude.
-
-When both credentials are available, Claude sends MarkdownV2 notifications
-with a plain summary line and bold detail labels for:
-
-- `Notification`: `🔔 Claude needs input · <project>`, the session ID, the first
-  user prompt, and the notification detail.
-- `Stop`: `✅ Claude finished · <project>`, the session ID, and the first user
-  prompt. Assistant response text is not sent.
-
-The session ID and first user prompt are intentionally sent. Only the project
-directory basename is included, not its full path; transcript files, assistant
-responses, PIDs, model names, and credentials are excluded. Delivery happens
-after a successful status DB write, is limited to two seconds, and has no retry
-or background daemon.
-Telegram errors never fail Claude Code or roll back status. Codex and Pi events
-do not send Telegram notifications.
-
-When the hook is running inside tmux and the pane is still live, the message
-also includes an `Attach in tmux` link. This is a best-effort convenience for
-Telegram Desktop and a browser running on the **same computer** as tmux:
-
-- Clicking the link switches the most recently active existing tmux client to
-  the exact originating pane; it does not launch or focus Ghostty and does not
-  create a new terminal or SSH connection.
-- The browser first loads an inert page and then submits a same-origin action;
-  Telegram link previews cannot switch tmux. A visible form button remains as
-  a JavaScript-disabled fallback.
-- The link uses an opaque, single-use loopback token, expires after 15 minutes,
-  and is served by a short-lived helper. No persistent listener or Telegram
-  polling daemon is required.
-- Missing tmux context, a dead pane, listener startup failure, or Telegram
-  delivery failure removes only the link; the ordinary notification remains.
-  A dead pane reports that the tmux session is no longer available.
-- Links clicked from a phone or another computer cannot reach the tmux host's
-  loopback listener. Attach targets, pane IDs, client names, paths, and host
-  details are not included in the Telegram message or URL.
-
-Both credentials are required, whether they come from the file, environment, or
-a combination of the two. With neither configured, Telegram is silently
-disabled; a partial configuration is skipped as an error. To disable it, remove
-the `[telegram]` configuration and unset any overrides:
-
-```bash
-unset TWM_TELEGRAM_BOT_TOKEN TWM_TELEGRAM_CHAT_ID
-```
-
-For redacted delivery diagnostics, launch Claude with `TWM_HOOK_DEBUG=1` and
-inspect `$TMPDIR/twm_hook.log`. The log reports only failure categories and does
-not include the bot token, destination, response body, attach URL, token,
-tmux target, or token-bearing URL.
 
 ## Notes
 

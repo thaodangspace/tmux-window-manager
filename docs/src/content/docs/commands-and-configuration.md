@@ -23,7 +23,6 @@ for troubleshooting and integrations but normally should not be called by hand:
 | `label <pid> [fallback]` | Resolve the nearest coding-agent process name for a status-bar label |
 | `open-editor <zed\|typora> <target>` | Open the target window's current directory |
 | `hook [event] [--agent NAME] [--codex]` | Normalize and record an agent lifecycle payload |
-| `serve-attach` | Run the short-lived, one-shot loopback attach helper |
 
 Use `tmux-window-manager <command> --help` for current argument and flag details.
 
@@ -53,9 +52,6 @@ setw -g window-status-format "#I: #(basename '#{pane_current_path}')/#(#{@twm_bi
 | --- | --- | --- |
 | `TWM_DB_PATH` | XDG state path | Override the complete SQLite database path |
 | `XDG_STATE_HOME` | `~/.local/state` | Change the base directory for `tmux-window-manager/agents.db` |
-| `XDG_CONFIG_HOME` | `~/.config` | Change the base directory for `twm.toml` |
-| `TWM_TELEGRAM_BOT_TOKEN` | File value | Non-empty Telegram bot-token override |
-| `TWM_TELEGRAM_CHAT_ID` | File value | Non-empty Telegram chat-ID override |
 | `TWM_HOOK_DEBUG` | Disabled | Enable redacted hook diagnostics in `$TMPDIR/twm_hook.log` |
 
 The popup selection handoff also uses short-lived files under `$TMPDIR`. Client

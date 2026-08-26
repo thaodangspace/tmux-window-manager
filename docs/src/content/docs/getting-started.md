@@ -57,4 +57,3 @@ standard path or make it visible to the tmux server environment.
 
 - Learn the [window picker controls](/window-picker/).
 - Install [agent status hooks](/agent-status/).
-- Add [Telegram notifications](/telegram/) only if you want them.
