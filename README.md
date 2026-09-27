@@ -27,6 +27,10 @@ script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
   **working** (`⟳`), **waiting on you** (`🔔`, e.g. a permission prompt), or idle
   — no process polling or pane-scraping. Run `tmux-window-manager install-hooks`
   once to wire it up.
+- **Persistent agents sidebar** — a narrow, always-visible left pane in every
+  window, grouped by workspace (git root), showing every agent and its live
+  status (`⋮ working`, `● waiting`, `✓ idle`). **On by default;** disable it in
+  one line (see below).
 - **Optional Telegram notifications** — best-effort messages only when an agent
   needs user input (`Notification`) or finishes a turn (`Stop`).
 - **Agent preview** — model and latest message, captured at hook time from
@@ -116,6 +120,9 @@ The binary re-invokes itself for its internal modes; you normally only bind
 | `install-hooks [--claude] [--codex] [--dry-run]` | Wire status hooks into Claude Code / Codex |
 | `hook [event]` | Record an agent lifecycle event (called from Claude/Codex hooks) |
 | `status [--all]` | Dump the recorded agent status rows (debug) |
+| `sidebar enable` / `disable` | Turn the persistent sidebar on/off at runtime |
+| `sidebar toggle [-t window]` | Hide or show the sidebar in one window |
+| `sidebar ensure` / `install` / `uninstall` | Reconcile / wire / remove the sidebar (usually automatic) |
 
 ## Agent status setup
 
@@ -129,6 +136,38 @@ This idempotently merges `SessionStart` / `UserPromptSubmit` / `Notification` /
 `Stop` / `SessionEnd` hooks into `~/.claude/settings.json` (preserving your own
 hooks) and prints a `notify = [...]` line to add to `~/.codex/config.toml`. From
 then on, each agent reports its status as it works, and the picker reflects it.
+
+## Persistent agents sidebar
+
+The plugin docks a narrow left pane in every window that lists the coding agents
+running in each workspace (git root) with a live status glyph — `⋮ working`
+(cyan), `● waiting` (yellow), `✓ idle` (green), `○ idle` (dim, no hook status).
+It is **on by default** and refreshes about once a second while visible, doing
+near-zero work while hidden. It never takes focus, never receives keystrokes, and
+never appears in the picker's search or preview.
+
+**To turn it off permanently**, add to `~/.config/twm.toml` (or
+`$XDG_CONFIG_HOME/twm.toml`):
+
+```toml
+[sidebar]
+enabled = false
+```
+
+**To turn it off for this tmux server** (until it restarts), run
+`tmux-window-manager sidebar disable` (`sidebar enable` turns it back on). To hide
+it in just the current window, run `tmux-window-manager sidebar toggle`.
+
+Tune the width and refresh in the same `[sidebar]` block:
+
+```toml
+[sidebar]
+width = 32          # columns, clamped 20..80 (capped at half the window)
+refresh_ms = 1000   # clamped 500..10000
+```
+
+See the [sidebar guide](docs/src/content/docs/sidebar.md) for grouping,
+troubleshooting, and known limits.
 
 ## Telegram notifications (optional)
 

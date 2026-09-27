@@ -88,6 +88,40 @@ func walkDirs(root string, maxDepth int, exclude map[string]bool, includeHidden 
 	return dirs
 }
 
+// GitRoot returns the nearest ancestor of path (inclusive) that contains a .git
+// entry — a directory for a normal clone or a file for a worktree — used as a
+// stable workspace grouping key. The walk stops before $HOME, so a stray .git in
+// the home directory is ignored, and stops at the filesystem root. It returns ""
+// when no repository is found.
+func GitRoot(path string) string {
+	home, _ := os.UserHomeDir()
+	return gitRoot(path, home)
+}
+
+// gitRoot is the testable core of GitRoot with an injectable home directory.
+func gitRoot(path, home string) string {
+	if path == "" {
+		return ""
+	}
+	if home != "" {
+		home = filepath.Clean(home)
+	}
+	dir := filepath.Clean(path)
+	for {
+		if home != "" && dir == home {
+			return ""
+		}
+		if isGitRepo(dir) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
 func isDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
