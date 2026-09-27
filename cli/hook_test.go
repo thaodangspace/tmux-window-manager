@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +15,10 @@ import (
 func withTempDB(t *testing.T) *store.DB {
 	t.Helper()
 	t.Setenv("TWM_DB_PATH", filepath.Join(t.TempDir(), "agents.db"))
+	// Tests must never inherit real Telegram credentials.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("TWM_TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("TWM_TELEGRAM_CHAT_ID", "")
 	db, err := store.Open()
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -97,6 +102,42 @@ func TestRunHookStopEnrichment(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].Latest != "work completed safely" || rows[0].Model != "Opus" || rows[0].Prompt != "pull latest changes" {
 		t.Fatalf("unexpected rows after stop: %+v", rows)
+	}
+}
+
+type fakeNotifier struct {
+	messages []string
+	err      error
+}
+
+func (f *fakeNotifier) Send(_ context.Context, message string) error {
+	f.messages = append(f.messages, message)
+	return f.err
+}
+
+func TestHookTelegramOnlyForAskAndStop(t *testing.T) {
+	db := withTempDB(t)
+	if err := db.Upsert(store.Status{Agent: "pi", SessionID: "s", Cwd: "/work/project", Status: store.Running, Prompt: "fix it", UpdatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	sender := &fakeNotifier{}
+	factory := func() (hookNotifier, bool, error) { return sender, true, nil }
+
+	runHookWithNotifier("pi", "UserPromptSubmit", false, []byte(`{"session_id":"s","cwd":"/work/project","prompt":"fix it"}`), factory)
+	if len(sender.messages) != 0 {
+		t.Fatalf("prompt produced Telegram message: %q", sender.messages)
+	}
+
+	runHookWithNotifier("pi", "Notification", false, []byte(`{"session_id":"s","cwd":"/work/project","message":"permission required"}`), factory)
+	runHookWithNotifier("pi", "Stop", false, []byte(`{"session_id":"s","cwd":"/work/project"}`), factory)
+	if len(sender.messages) != 2 {
+		t.Fatalf("messages = %d, want 2", len(sender.messages))
+	}
+	if !strings.Contains(sender.messages[0], "Pi needs input") || !strings.Contains(sender.messages[0], "permission required") {
+		t.Fatalf("waiting message = %q", sender.messages[0])
+	}
+	if !strings.Contains(sender.messages[1], "Pi finished") {
+		t.Fatalf("stop message = %q", sender.messages[1])
 	}
 }
 

@@ -34,6 +34,7 @@ export default defineConfig({
           items: [
             { label: 'Window picker', slug: 'window-picker' },
             { label: 'Agent status', slug: 'agent-status' },
+            { label: 'Telegram notifications', slug: 'telegram' },
           ],
         },
         {

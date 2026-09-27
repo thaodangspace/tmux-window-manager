@@ -235,6 +235,48 @@ func TestBuildFilteredPreservesMatchingGroups(t *testing.T) {
 	}
 }
 
+func TestFilterGroupUsesFuzzyMetadataAndPaneContent(t *testing.T) {
+	rows := []windowRow{
+		{target: "work:1", search: "work:1 editor nvim"},
+		{target: "work:2", search: "work:2 shell zsh", content: "@thaodangspace/agent-sandbox"},
+	}
+
+	got := filterGroup("work", rows, "thdngspc")
+	if len(got) != 1 || got[0].target != "work:2" {
+		t.Fatalf("pane-content fuzzy match = %#v, want work:2", got)
+	}
+
+	got = filterGroup("work", rows, "edtr")
+	if len(got) != 1 || got[0].target != "work:1" {
+		t.Fatalf("metadata fuzzy match = %#v, want work:1", got)
+	}
+
+	if got := filterGroup("work", rows, "wrk"); len(got) != 2 {
+		t.Fatalf("fuzzy session match returned %d rows, want 2", len(got))
+	}
+	if got := filterGroup("work", rows, "missing"); len(got) != 0 {
+		t.Fatalf("non-match returned %d rows, want 0", len(got))
+	}
+}
+
+func TestFuzzySearchDoesNotMatchAcrossUnrelatedTokens(t *testing.T) {
+	content := "the admin dashboard\nassets hosted on demand\nspace available"
+	if fuzzyMatchPaneContent(content, "thaodangspace") {
+		t.Fatal("pane content matched by collecting characters across unrelated tokens")
+	}
+	if !fuzzyMatchPaneContent("package @thaodangspace/agent-sandbox", "thdngspc") {
+		t.Fatal("pane content did not fuzzy-match text within one token")
+	}
+
+	metadata := "dsh-gh-temporal:1 dsh-gh-temporal node /Users/dt/code/dsh-gh-temporal"
+	if fuzzyMatch(metadata, "mod-emr") {
+		t.Fatal("metadata matched by collecting characters across unrelated fields")
+	}
+	if !fuzzyMatch("va-mod-emr:1 va-mod-emr zsh", "mod-emr") {
+		t.Fatal("metadata did not fuzzy-match within a session token")
+	}
+}
+
 func TestBuildAgentBadges(t *testing.T) {
 	windows := []tmuxcli.Window{
 		{Session: "ai", Index: 1, Active: true, Name: "node", Command: "node", Path: "/Users/dt/code/tmux-window-manager"},

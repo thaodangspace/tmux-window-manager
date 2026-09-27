@@ -36,6 +36,7 @@ store/      SQLite status persistence (the event-driven status source)
   path.go        canonical DB path ($TWM_DB_PATH / $XDG_STATE_HOME / ~/.local/state)
   store.go       schema, Upsert/Get/Delete, LiveByCwd (pid-liveness + lazy reap)
   alive.go       kill(pid,0) liveness (unix)
+notify/     optional Telegram config, safe message composition, and HTTP delivery
 picker/     list row building + fzf invocation
   build.go     rows; Enricher iface; visible status-panel-label/bot/status format
   enrich.go    LiveEnricher: pane paths + status map -> badges (pure lookups)
@@ -71,6 +72,11 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   reads the DB — there is **no** `capture-pane` busy regex and **no** transcript
   JSON cache anymore (both removed). The payoff is a real **waiting-on-user**
   state (`🔔`) that pane-scraping could never detect reliably.
+- **Telegram is a post-write, best-effort side effect.** With credentials in
+  `~/.config/twm.toml` (or environment overrides), exact `Notification` and
+  `Stop` hook events send a bounded Telegram Bot API request after the status
+  write succeeds. Other events and Codex notify payloads are excluded. Delivery
+  failures are redacted, never roll back status, and never fail the agent hook.
 - **Status source of truth: `store`.** DB at
   `~/.local/state/tmux-window-manager/agents.db` (override `$TWM_DB_PATH`, honors
   `$XDG_STATE_HOME`). WAL + `busy_timeout` for concurrent short-lived hook
@@ -106,6 +112,14 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   clients narrower than 100 columns hide fzf's right-hand preview so the window
   list can use the full popup width. If tmux cannot report a width, the preview
   remains visible.
+- **Grouped fuzzy search includes preview text.** Since fzf is disabled to keep
+  session headers grouped, `list --query` performs case-insensitive subsequence
+  matching itself. It searches window/session metadata first, then lazily
+  captures the visible bodies of otherwise-unmatched panes so text shown in the
+  preview can find its window without adding that potentially large text to the
+  emitted fzf row. All fuzzy matches are constrained to individual
+  whitespace-delimited tokens to prevent characters across metadata fields, a
+  screen, or a long prose line from making unrelated windows match.
 - **Ctrl-N directory suggestions are Git repos only.** The new-session picker
   still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
   `$HOME` top-level children), but emits only candidates with a direct `.git`

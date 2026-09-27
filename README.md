@@ -27,6 +27,8 @@ script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
   **working** (`⟳`), **waiting on you** (`🔔`, e.g. a permission prompt), or idle
   — no process polling or pane-scraping. Run `tmux-window-manager install-hooks`
   once to wire it up.
+- **Optional Telegram notifications** — best-effort messages only when an agent
+  needs user input (`Notification`) or finishes a turn (`Stop`).
 - **Agent preview** — model and latest message, captured at hook time from
   Claude transcripts (`~/.claude/projects/**/*.jsonl`) and the Codex notify
   payload.
@@ -127,6 +129,27 @@ This idempotently merges `SessionStart` / `UserPromptSubmit` / `Notification` /
 `Stop` / `SessionEnd` hooks into `~/.claude/settings.json` (preserving your own
 hooks) and prints a `notify = [...]` line to add to `~/.codex/config.toml`. From
 then on, each agent reports its status as it works, and the picker reflects it.
+
+## Telegram notifications (optional)
+
+Copy the included example and replace both values:
+
+```bash
+mkdir -p ~/.config
+cp twm.toml.example ~/.config/twm.toml
+chmod 600 ~/.config/twm.toml
+```
+
+```toml
+[telegram]
+bot_token = "<bot-token>"
+chat_id = "<chat-id>"
+```
+
+TWM sends only `Notification` (needs input) and `Stop` (turn finished) events.
+Delivery is best effort and never fails the agent hook. Environment variables
+`TWM_TELEGRAM_BOT_TOKEN` and `TWM_TELEGRAM_CHAT_ID` can override the file.
+See the [Telegram guide](docs/src/content/docs/telegram.md) for details.
 
 ## Notes
 

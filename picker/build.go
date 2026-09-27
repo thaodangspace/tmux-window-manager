@@ -68,6 +68,17 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 		return "", err
 	}
 
+	// Pane contents are comparatively expensive to obtain, so only discover
+	// panes while the user has an active query. Their bodies are captured lazily
+	// below, and only for windows that do not already match metadata.
+	panesByWindow := map[string][]tmuxcli.Pane{}
+	if strings.TrimSpace(query) != "" {
+		for _, pane := range tmuxcli.AllPanes() {
+			key := pane.Session + ":" + strconv.Itoa(pane.WindowIndex)
+			panesByWindow[key] = append(panesByWindow[key], pane)
+		}
+	}
+
 	var b strings.Builder
 	prev := ""
 	var group []windowRow
@@ -90,19 +101,24 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 			group = group[:0]
 			prev = w.Session
 		}
-		group = append(group, newWindowRow(w, e.Window(w.Session, w.Index, w.Name, w.Command)))
+		r := newWindowRow(w, e.Window(w.Session, w.Index, w.Name, w.Command))
+		if !fuzzyMatch(w.Session, query) && !fuzzyMatch(r.search, query) {
+			r.content = searchablePaneText(panesByWindow[r.target])
+		}
+		group = append(group, r)
 	}
 	flush(prev)
 	return b.String(), nil
 }
 
 type windowRow struct {
-	target string
-	dot    string
-	name   string
-	robot  string
-	status string
-	search string
+	target  string
+	dot     string
+	name    string
+	robot   string
+	status  string
+	search  string
+	content string // captured pane body used for matching, never emitted to fzf
 }
 
 func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
@@ -180,15 +196,83 @@ func cleanSearch(s string) string {
 }
 
 func filterGroup(session string, rows []windowRow, query string) []windowRow {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" || strings.Contains(strings.ToLower(session), q) {
+	if fuzzyMatch(session, query) {
 		return rows
 	}
 	out := make([]windowRow, 0, len(rows))
 	for _, r := range rows {
-		if strings.Contains(strings.ToLower(r.search), q) {
+		if fuzzyMatch(r.search, query) || fuzzyMatchPaneContent(r.content, query) {
 			out = append(out, r)
 		}
 	}
 	return out
+}
+
+// fuzzyMatch applies fzf-like, case-insensitive subsequence matching. Query
+// words are matched independently so spaces narrow the result rather than
+// needing to occur literally in the indexed text.
+func fuzzyMatch(text, query string) bool {
+	tokens := strings.Fields(text)
+	for _, word := range strings.Fields(strings.ToLower(query)) {
+		matched := false
+		for _, token := range tokens {
+			if fuzzyMatchWord(token, word) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+func fuzzyMatchWord(text, word string) bool {
+	needle := []rune(word)
+	at := 0
+	for _, r := range []rune(strings.ToLower(text)) {
+		if at < len(needle) && r == needle[at] {
+			at++
+		}
+	}
+	return at == len(needle)
+}
+
+// fuzzyMatchPaneContent constrains each query word to one whitespace-delimited
+// token. If the whole captured screen (or even a long prose line) were treated
+// as one string, common characters spread across unrelated words would make
+// almost every pane a fuzzy match. Tokens still cover preview values such as
+// @thaodangspace/agent-sandbox and filesystem paths.
+func fuzzyMatchPaneContent(content, query string) bool {
+	tokens := strings.Fields(content)
+	for _, word := range strings.Fields(strings.ToLower(query)) {
+		matched := false
+		for _, token := range tokens {
+			if fuzzyMatchWord(token, word) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+// searchablePaneText captures the same visible pane bodies shown by the
+// preview. Capture failures are ignored so a pane disappearing during an fzf
+// reload cannot break the picker.
+func searchablePaneText(panes []tmuxcli.Pane) string {
+	var text strings.Builder
+	for _, pane := range panes {
+		body, err := tmuxcli.CapturePane(pane.ID, false)
+		if err != nil {
+			continue
+		}
+		text.WriteByte(' ')
+		text.WriteString(body)
+	}
+	return text.String()
 }

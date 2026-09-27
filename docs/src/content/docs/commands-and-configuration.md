@@ -51,6 +51,9 @@ setw -g window-status-format "#I: #(basename '#{pane_current_path}')/#(#{@twm_bi
 | --- | --- | --- |
 | `TWM_DB_PATH` | XDG state path | Override the complete SQLite database path |
 | `XDG_STATE_HOME` | `~/.local/state` | Change the base directory for `tmux-window-manager/agents.db` |
+| `XDG_CONFIG_HOME` | `~/.config` | Change the directory containing optional `twm.toml` |
+| `TWM_TELEGRAM_BOT_TOKEN` | File value | Non-empty Telegram bot-token override |
+| `TWM_TELEGRAM_CHAT_ID` | File value | Non-empty Telegram chat-ID override |
 | `TWM_HOOK_DEBUG` | Disabled | Enable redacted hook diagnostics in `$TMPDIR/twm_hook.log` |
 
 The popup selection handoff also uses short-lived files under `$TMPDIR`. Client

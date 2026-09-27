@@ -1,0 +1,6 @@
+# Copy this file to ~/.config/twm.toml and replace both values.
+# Keep the resulting file private: chmod 600 ~/.config/twm.toml
+
+[telegram]
+bot_token = "123456789:replace-with-your-bot-token"
+chat_id = "-1001234567890"
