@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
 	"github.com/thaodangspace/tmux-window-manager/picker"
 	"github.com/thaodangspace/tmux-window-manager/store"
-	"github.com/spf13/cobra"
 )
 
 func newListCommand() *cobra.Command {

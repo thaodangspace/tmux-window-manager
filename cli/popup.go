@@ -4,9 +4,9 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/spf13/cobra"
 	"github.com/thaodangspace/tmux-window-manager/picker"
 	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
-	"github.com/spf13/cobra"
 )
 
 func newPopupCommand() *cobra.Command {

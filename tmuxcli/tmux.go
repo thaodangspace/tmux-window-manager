@@ -196,7 +196,7 @@ func AllPanes() []Pane {
 	const format = "#{session_name}" + sep + "#{window_index}" + sep +
 		"#{pane_id}" + sep + "#{pane_pid}" + sep + "#{pane_active}" + sep +
 		"#{pane_current_path}"
-	out, err := run("list-panes", "-a", "-f", NotSidebarFilter, "-F", format)
+	out, err := run("list-panes", "-a", "-F", format)
 	if err != nil {
 		return nil
 	}
@@ -252,7 +252,7 @@ func PanesOf(target string) []PaneDetail {
 	const format = "#{pane_id}" + sep + "#{pane_index}" + sep +
 		"#{pane_current_command}" + sep + "#{pane_width}" + sep +
 		"#{pane_height}" + sep + "#{pane_active}" + sep + "#{pane_pid}"
-	out, err := run("list-panes", "-t", target, "-f", NotSidebarFilter, "-F", format)
+	out, err := run("list-panes", "-t", target, "-F", format)
 	if err != nil {
 		return nil
 	}

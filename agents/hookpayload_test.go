@@ -22,10 +22,10 @@ func TestClaudeHookEventMapping(t *testing.T) {
 			wantStatus: store.Idle,
 		},
 		{
-			name:       "UserPromptSubmit -> running with prompt",
+			name:       "UserPromptSubmit -> working with prompt",
 			event:      "UserPromptSubmit",
 			raw:        `{"session_id":"s1","cwd":"/w","prompt":"fix   the\nbug"}`,
-			wantStatus: store.Running,
+			wantStatus: store.Working,
 			check: func(t *testing.T, h Hook) {
 				if h.Prompt != "fix the bug" {
 					t.Fatalf("prompt = %q, want cleaned %q", h.Prompt, "fix the bug")
@@ -55,10 +55,21 @@ func TestClaudeHookEventMapping(t *testing.T) {
 			},
 		},
 		{
-			name:       "PreToolUse -> running with tool name",
+			name:       "PreToolUse -> working with tool name",
 			event:      "PreToolUse",
 			raw:        `{"session_id":"s1","cwd":"/w","tool_name":"Bash"}`,
-			wantStatus: store.Running,
+			wantStatus: store.Working,
+			check: func(t *testing.T, h Hook) {
+				if h.Detail != "Bash" {
+					t.Fatalf("detail = %q", h.Detail)
+				}
+			},
+		},
+		{
+			name:       "PostToolUseFailure -> error",
+			event:      "PostToolUseFailure",
+			raw:        `{"session_id":"s1","cwd":"/w","tool_name":"Bash"}`,
+			wantStatus: store.Error,
 			check: func(t *testing.T, h Hook) {
 				if h.Detail != "Bash" {
 					t.Fatalf("detail = %q", h.Detail)

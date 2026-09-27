@@ -19,6 +19,7 @@ var claudeHookEvents = []string{
 	"SessionStart",
 	"UserPromptSubmit",
 	"Notification",
+	"PostToolUseFailure",
 	"Stop",
 	"SessionEnd",
 }

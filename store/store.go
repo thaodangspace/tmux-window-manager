@@ -18,8 +18,9 @@ const maxField = 4096
 // Status values an agent reports through its lifecycle.
 const (
 	Idle    = "idle"    // session open, not currently working
-	Running = "running" // actively working on a turn
+	Working = "working" // actively working on a turn
 	Waiting = "waiting" // blocked on the user (permission / input)
+	Error   = "error"   // the latest tool/action failed and needs attention
 	Ended   = "ended"   // session ended (rows are normally deleted instead)
 )
 

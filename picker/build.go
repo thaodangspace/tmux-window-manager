@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/thaodangspace/tmux-window-manager/dirs"
 	"github.com/thaodangspace/tmux-window-manager/store"
 	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
@@ -26,15 +27,17 @@ type WindowBadge struct {
 	Status     string // store status for this window's agent
 }
 
-// statusText maps an agent status to its trailing italicized label: "waiting"
-// when the agent wants the user, "running" when it is working, nothing when
-// idle. Text (not a glyph) so claude/codex states read at a glance.
+// statusText maps every agent state to a distinct trailing label.
 func statusText(status string) string {
 	switch status {
+	case store.Error:
+		return " " + Red + Italic + "error" + Rst
 	case store.Waiting:
 		return " " + Ylw + Italic + "waiting" + Rst
-	case store.Running:
-		return " " + Cyan + Italic + "running" + Rst
+	case store.Working:
+		return " " + Cyan + Italic + "working" + Rst
+	case store.Idle:
+		return " " + Dim + Italic + "idle" + Rst
 	default:
 		return ""
 	}
@@ -148,21 +151,28 @@ func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
 
 	idx := strconv.Itoa(w.Index)
 	target := w.Session + ":" + idx
+	branch := ""
+	if w.Path != "" {
+		branch = dirs.GitBranch(w.Path)
+	}
 	return windowRow{
 		target:   target,
 		dot:      dot,
-		name:     statusPanelName(w, wb),
+		name:     statusPanelName(w, wb, branch),
 		robot:    robot,
 		status:   status,
 		hasAgent: wb.AgentLabel != "",
-		search:   cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, w.Path, wb.AgentLabel, wb.PaneLabel, wb.Status}, " ")),
+		search:   cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, w.Path, branch, wb.AgentLabel, wb.PaneLabel, wb.Status}, " ")),
 	}
 }
 
-func statusPanelName(w tmuxcli.Window, wb WindowBadge) string {
+func statusPanelName(w tmuxcli.Window, wb WindowBadge, branch string) string {
 	base := w.Name
 	if w.Path != "" {
 		base = filepath.Base(w.Path)
+	}
+	if branch != "" {
+		base = fmt.Sprintf("%s(%s)", base, branch)
 	}
 	label := w.Command
 	if wb.PaneLabel != "" {
@@ -172,9 +182,9 @@ func statusPanelName(w tmuxcli.Window, wb WindowBadge) string {
 		return base
 	}
 	if base == "" {
-		return label
+		return "[" + label + "]"
 	}
-	return base + "/" + label
+	return base + "[" + label + "]"
 }
 
 func writeHeader(b *strings.Builder, session, search string) {
@@ -187,13 +197,14 @@ func writeWindowRow(b *strings.Builder, r windowRow) {
 	// the right window, but the visible row avoids repeating that target or any
 	// custom process/agent/model label. Show tmux's window name, optional bot, and
 	// optional status in scan-friendly columns.
-	parts := make([]string, 0, 3)
-	for _, part := range []string{r.name, r.robot, r.status} {
-		if part != "" {
-			parts = append(parts, part)
-		}
+	display := r.name
+	if r.robot != "" {
+		display = r.robot + " " + display
 	}
-	fmt.Fprintf(b, "%s\t   %s%s\t%s\n", r.target, r.dot, strings.Join(parts, " - "), r.search)
+	if r.status != "" {
+		display += " - " + r.status
+	}
+	fmt.Fprintf(b, "%s\t   %s%s\t%s\n", r.target, r.dot, display, r.search)
 }
 
 func groupSearch(rows []windowRow) string {

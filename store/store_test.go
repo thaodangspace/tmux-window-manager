@@ -43,7 +43,7 @@ func TestMigrateSetsVersionAndIsIdempotent(t *testing.T) {
 func TestUpsertNewestPerCwdWins(t *testing.T) {
 	db := openTemp(t)
 	self := os.Getpid()
-	if err := db.Upsert(mk("claude", "s1", "/work", self, Running, 100)); err != nil {
+	if err := db.Upsert(mk("claude", "s1", "/work", self, Working, 100)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Upsert(mk("codex", "s2", "/work", self, Waiting, 200)); err != nil {
@@ -66,7 +66,7 @@ func TestUpsertConflictUpdatesInPlace(t *testing.T) {
 	db := openTemp(t)
 	self := os.Getpid()
 	// First turn: prompt captured, running.
-	db.Upsert(Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: self, Status: Running, Prompt: "do the thing", UpdatedAt: 1})
+	db.Upsert(Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: self, Status: Working, Prompt: "do the thing", UpdatedAt: 1})
 	// Later: idle, no new prompt, fresh latest message + model.
 	db.Upsert(Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: self, Status: Idle, Latest: "done", Model: "opus", UpdatedAt: 2})
 
@@ -85,7 +85,7 @@ func TestUpsertConflictUpdatesInPlace(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	db := openTemp(t)
-	want := Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: os.Getpid(), Status: Running, Prompt: "first prompt", UpdatedAt: 1}
+	want := Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: os.Getpid(), Status: Working, Prompt: "first prompt", UpdatedAt: 1}
 	if err := db.Upsert(want); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestGet(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	db := openTemp(t)
-	db.Upsert(mk("claude", "s", "/w", os.Getpid(), Running, 1))
+	db.Upsert(mk("claude", "s", "/w", os.Getpid(), Working, 1))
 	if err := db.Delete("claude", "s"); err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +118,8 @@ func TestDelete(t *testing.T) {
 
 func TestLiveByCwdFiltersAndReapsDeadPID(t *testing.T) {
 	db := openTemp(t)
-	db.Upsert(mk("claude", "alive", "/a", os.Getpid(), Running, 1))
-	db.Upsert(mk("claude", "dead", "/b", deadPID, Running, 1))
+	db.Upsert(mk("claude", "alive", "/a", os.Getpid(), Working, 1))
+	db.Upsert(mk("claude", "dead", "/b", deadPID, Working, 1))
 
 	live, err := db.LiveByCwd()
 	if err != nil {
@@ -155,7 +155,7 @@ func TestTruncateBoundsField(t *testing.T) {
 	for i := range big {
 		big[i] = 'x'
 	}
-	db.Upsert(Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: 0, Status: Running, Latest: string(big), UpdatedAt: 1})
+	db.Upsert(Status{Agent: "claude", SessionID: "s", Cwd: "/w", Pid: 0, Status: Working, Latest: string(big), UpdatedAt: 1})
 	all, _ := db.All()
 	if len(all[0].Latest) > maxField {
 		t.Fatalf("latest not truncated: %d", len(all[0].Latest))
@@ -171,7 +171,7 @@ func TestConcurrentUpsert(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			s := fmt.Sprintf("sess-%d", i)
-			if err := db.Upsert(mk("claude", s, "/w"+s, self, Running, int64(i))); err != nil {
+			if err := db.Upsert(mk("claude", s, "/w"+s, self, Working, int64(i))); err != nil {
 				t.Errorf("concurrent upsert %d: %v", i, err)
 			}
 		}(i)
@@ -241,9 +241,9 @@ func TestMigrateUpgradesV1Database(t *testing.T) {
 
 func TestUpsertTurnFieldsAndMarkNotified(t *testing.T) {
 	db := openTemp(t)
-	first := mk("claude", "s", "/w", 0, Running, 10)
+	first := mk("claude", "s", "/w", 0, Working, 10)
 	first.Prompt, first.TurnPrompt, first.TurnStartedAt = "first", "first", 10
-	second := mk("claude", "s", "/w", 0, Running, 20)
+	second := mk("claude", "s", "/w", 0, Working, 20)
 	second.Prompt, second.TurnPrompt, second.TurnStartedAt = "second", "second", 20
 	for _, s := range []Status{first, second, mk("claude", "s", "/w", 0, Idle, 30)} {
 		if err := db.Upsert(s); err != nil {

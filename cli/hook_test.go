@@ -37,7 +37,7 @@ func TestRunHookLifecycle(t *testing.T) {
 
 	// Start -> idle row exists.
 	runHook("claude", "SessionStart", false, []byte(`{"session_id":"s","cwd":"/w"}`))
-	// Prompt -> running with prompt.
+	// Prompt -> working with prompt.
 	runHook("claude", "UserPromptSubmit", false, []byte(`{"session_id":"s","cwd":"/w","prompt":"do it"}`))
 
 	live, err := db.LiveByCwd()
@@ -48,7 +48,7 @@ func TestRunHookLifecycle(t *testing.T) {
 	if !ok {
 		t.Fatal("no row for /w after prompt")
 	}
-	if row.Status != store.Running || row.Prompt != "do it" {
+	if row.Status != store.Working || row.Prompt != "do it" {
 		t.Fatalf("after prompt: %+v", row)
 	}
 
@@ -82,7 +82,7 @@ func TestRunHookCodex(t *testing.T) {
 
 func TestRunHookStopEnrichment(t *testing.T) {
 	db := withTempDB(t)
-	if err := db.Upsert(store.Status{Agent: "claude", SessionID: "stop", Cwd: "/work/project", Status: store.Running, Prompt: "pull latest changes", UpdatedAt: 1}); err != nil {
+	if err := db.Upsert(store.Status{Agent: "claude", SessionID: "stop", Cwd: "/work/project", Status: store.Working, Prompt: "pull latest changes", UpdatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	transcript := filepath.Join(t.TempDir(), "session.jsonl")

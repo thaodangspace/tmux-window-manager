@@ -61,8 +61,9 @@ func TestMergePreservesForeignHooksAndSettings(t *testing.T) {
 		t.Errorf("unrelated setting lost")
 	}
 	hooks := asMap(out["hooks"])
-	if len(asSlice(hooks["PostToolUseFailure"])) != 1 {
-		t.Errorf("foreign PostToolUseFailure hook dropped")
+	failure := asSlice(hooks["PostToolUseFailure"])
+	if len(failure) != 2 {
+		t.Errorf("PostToolUseFailure groups = %d, want 2 (user + twm)", len(failure))
 	}
 	// Notification now has the user's hook + ours = 2 groups.
 	notif := asSlice(hooks["Notification"])

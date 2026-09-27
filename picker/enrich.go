@@ -15,7 +15,7 @@ import (
 // haven't reported — e.g. a Codex session, whose only hook fires at turn end.
 //
 // The status DB then *enriches* that badge: agents push lifecycle status
-// (idle/running/waiting) and model via hooks, each row carrying the pid of the
+// (idle/working/waiting/error) and model via hooks, each row carrying the pid of the
 // agent process it belongs to. We match those rows to a window by pid, not by
 // the pane's working directory — pid matching is what keeps a codex window and a
 // claude window distinct when they share a directory (directory matching
@@ -91,7 +91,7 @@ func (e *LiveEnricher) Window(session string, index int, _, _ string) WindowBadg
 
 // enrich folds the live status rows whose agent pid runs in this window into the
 // model string (distinct models joined) and the most attention-worthy status
-// (waiting beats running beats idle). Rows with an unknown pid (0) can't be
+// (error beats waiting beats working beats idle). Rows with an unknown pid (0) can't be
 // attributed to a window and are skipped; a window with no matching row keeps an
 // empty model/status, so its badge still shows the detected agent name alone.
 func (e *LiveEnricher) enrich(pids pidSet) (model, status string) {
@@ -122,9 +122,11 @@ func contains(ss []string, s string) bool {
 // statusRank orders states by how much they want the user's attention.
 func statusRank(s string) int {
 	switch s {
+	case store.Error:
+		return 4
 	case store.Waiting:
 		return 3
-	case store.Running:
+	case store.Working:
 		return 2
 	case store.Idle:
 		return 1

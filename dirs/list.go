@@ -122,6 +122,55 @@ func gitRoot(path, home string) string {
 	}
 }
 
+// GitBranch returns the active git branch name or short commit SHA for the given
+// directory. It locates the GitRoot, resolves .git/HEAD (including worktrees or
+// submodules where .git is a file), and returns the branch or detached commit
+// hash. Returns "" if not in a git repo or if HEAD cannot be resolved.
+func GitBranch(path string) string {
+	root := GitRoot(path)
+	if root == "" {
+		return ""
+	}
+	gitPath := filepath.Join(root, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return ""
+	}
+
+	gitDir := gitPath
+	if !info.IsDir() {
+		// Worktree or submodule: .git is a file containing "gitdir: <path>"
+		content, err := os.ReadFile(gitPath)
+		if err != nil {
+			return ""
+		}
+		line := strings.TrimSpace(string(content))
+		if !strings.HasPrefix(line, "gitdir:") {
+			return ""
+		}
+		target := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(root, target)
+		}
+		gitDir = filepath.Clean(target)
+	}
+
+	headBytes, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	head := strings.TrimSpace(string(headBytes))
+	if strings.HasPrefix(head, "ref:") {
+		ref := strings.TrimSpace(strings.TrimPrefix(head, "ref:"))
+		return strings.TrimPrefix(ref, "refs/heads/")
+	}
+	// Detached HEAD: return short commit SHA (up to 7 chars)
+	if len(head) > 7 {
+		return head[:7]
+	}
+	return head
+}
+
 func isDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()

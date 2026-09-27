@@ -13,7 +13,7 @@ import (
 // runs `claude` gets the badge (the bare shell has no detected agent process).
 func TestWindowBadgeRequiresLiveAgentProcess(t *testing.T) {
 	live := []store.Status{
-		{Agent: "claude", Model: "opus", Status: store.Running, Pid: 101, Cwd: "/code/foo"},
+		{Agent: "claude", Model: "opus", Status: store.Working, Pid: 101, Cwd: "/code/foo"},
 	}
 	panes := []tmuxcli.Pane{
 		{Session: "cli", WindowIndex: 1, PID: "100", Path: "/code/foo"}, // runs claude
@@ -37,7 +37,7 @@ func TestWindowBadgeRequiresLiveAgentProcess(t *testing.T) {
 func TestTwoAgentsSameDirStayDistinct(t *testing.T) {
 	live := []store.Status{
 		{Agent: "codex", Status: store.Idle, Pid: 301, Cwd: "/code/cli"},
-		{Agent: "claude", Model: "claude-opus-4-8", Status: store.Running, Pid: 401, Cwd: "/code/cli"},
+		{Agent: "claude", Model: "claude-opus-4-8", Status: store.Working, Pid: 401, Cwd: "/code/cli"},
 	}
 	panes := []tmuxcli.Pane{
 		{Session: "cli", WindowIndex: 1, PID: "300", Path: "/code/cli"},
@@ -75,12 +75,12 @@ func TestBadgeFromDetectorWithoutStatusRow(t *testing.T) {
 
 func TestEnrichPicksMostUrgentStatus(t *testing.T) {
 	e := &LiveEnricher{live: []store.Status{
-		{Model: "opus", Status: store.Running, Pid: 1},
+		{Model: "opus", Status: store.Working, Pid: 1},
 		{Model: "gpt", Status: store.Waiting, Pid: 2},
 		{Model: "opus", Status: store.Idle, Pid: 3},
 	}}
 
-	// One window spanning a running and a waiting agent pid -> waiting wins.
+	// One window spanning a working and a waiting agent pid -> waiting wins.
 	model, status := e.enrich(pidSet{1: true, 2: true})
 	if status != store.Waiting {
 		t.Errorf("status = %q, want waiting", status)
@@ -92,20 +92,20 @@ func TestEnrichPicksMostUrgentStatus(t *testing.T) {
 
 func TestEnrichDedupesAndIgnoresUnknownPIDs(t *testing.T) {
 	e := &LiveEnricher{live: []store.Status{
-		{Model: "opus", Status: store.Running, Pid: 1},
+		{Model: "opus", Status: store.Working, Pid: 1},
 		{Model: "opus", Status: store.Idle, Pid: 2}, // same model, second pid
 	}}
 	// Both matching pids + an unknown pid -> deduped model, unknown ignored,
 	// most-urgent status wins.
 	model, status := e.enrich(pidSet{1: true, 2: true, 99: true})
-	if model != "opus" || status != store.Running {
+	if model != "opus" || status != store.Working {
 		t.Fatalf("got %q/%q", model, status)
 	}
 }
 
 func TestEnrichNoMatchingPIDs(t *testing.T) {
 	e := &LiveEnricher{live: []store.Status{
-		{Model: "opus", Status: store.Running, Pid: 1},
+		{Model: "opus", Status: store.Working, Pid: 1},
 	}}
 	model, status := e.enrich(pidSet{7: true, 8: true})
 	if model != "" || status != "" {
@@ -114,8 +114,8 @@ func TestEnrichNoMatchingPIDs(t *testing.T) {
 }
 
 func TestMoreUrgent(t *testing.T) {
-	if moreUrgent(store.Running, store.Waiting) != store.Waiting {
-		t.Error("waiting should beat running")
+	if moreUrgent(store.Working, store.Waiting) != store.Waiting {
+		t.Error("waiting should beat working")
 	}
 	if moreUrgent(store.Waiting, store.Idle) != store.Waiting {
 		t.Error("waiting should beat idle")

@@ -1,7 +1,7 @@
 package agents
 
 // Kind describes one recognized coding agent: its process basename (ID) and the
-// human-facing name (Display) shown in the sidebar.
+// human-facing name (Display) shown in the picker and status output.
 type Kind struct {
 	ID      string
 	Display string

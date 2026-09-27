@@ -1,6 +1,8 @@
 package picker
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -108,9 +110,9 @@ func TestBuildPlainWindows(t *testing.T) {
 	if strings.Contains(lines[2], "●") {
 		t.Errorf("idle window row should not have a dot: %q", lines[2])
 	}
-	// Window rows mirror the tmux status-panel label: basename(cwd)/label.
+	// Window rows mirror the tmux status-panel label: basename(cwd)[label].
 	display := displayField(lines[1])
-	if !strings.Contains(display, "app/nvim") {
+	if !strings.Contains(display, "app[nvim]") {
 		t.Errorf("window row missing status-panel label: %q", lines[1])
 	}
 	if strings.Contains(display, "work:1") || strings.Contains(display, "editor") {
@@ -141,7 +143,7 @@ func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.
 		t.Errorf("header = %q/%q, want session name \"cli\"", target, display)
 	}
 
-	// Row 1: target is cli:1. Display shows basename(cwd)/label and never
+	// Row 1: target is cli:1. Display shows basename(cwd)[label] and never
 	// includes the full cwd, raw window name, or visible session:index context.
 	if tgt := strings.SplitN(lines[1], "\t", 2)[0]; tgt != "cli:1" {
 		t.Errorf("row 1 target = %q, want \"cli:1\"", tgt)
@@ -150,7 +152,7 @@ func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.
 	if strings.Contains(display1, "/Users/dt/code") {
 		t.Errorf("row 1 visible display should not include full current dir: %q", lines[1])
 	}
-	if !strings.Contains(display1, "tmux-window-manager/nvim") {
+	if !strings.Contains(display1, "tmux-window-manager") || !strings.Contains(display1, "nvim") {
 		t.Errorf("row 1 display should include status-panel label: %q", lines[1])
 	}
 	if strings.Contains(display1, "editor") || strings.Contains(display1, "cli:1") || strings.Contains(display1, "/Users/dt/code") {
@@ -170,7 +172,7 @@ func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.
 	if strings.Contains(display2, "/Users/dt/code") {
 		t.Errorf("row 2 visible display should not include full current dir: %q", lines[2])
 	}
-	if !strings.Contains(display2, "chatgpt-cli/zsh") {
+	if !strings.Contains(display2, "chatgpt-cli[zsh]") {
 		t.Errorf("row 2 display should include status-panel label: %q", lines[2])
 	}
 	if strings.Contains(display2, "shell") || strings.Contains(display2, "cli:3") || strings.Contains(display2, "/Users/dt/code") {
@@ -190,7 +192,7 @@ func TestBuildHeaderSearchIncludesChildWindowTerms(t *testing.T) {
 	e := stubEnricher{
 		windows: map[string]WindowBadge{
 			"vc-api-emr:1":    {AgentLabel: "claude(claude-opus-4-8)", Status: store.Waiting},
-			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Running},
+			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Working},
 		},
 	}
 	out := buildRows(windows, e)
@@ -221,7 +223,7 @@ func TestBuildFilteredPreservesMatchingGroups(t *testing.T) {
 	e := stubEnricher{
 		windows: map[string]WindowBadge{
 			"vc-api-emr:1":    {AgentLabel: "claude(claude-opus-4-8)", Status: store.Waiting},
-			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Running},
+			"vc-page-admin:2": {AgentLabel: "claude(claude-opus-4-8)", Status: store.Working},
 		},
 	}
 	out := buildRowsFiltered(windows, e, "claude")
@@ -274,7 +276,7 @@ func TestBuildFilteredAgentsOnly(t *testing.T) {
 	}
 	e := stubEnricher{
 		windows: map[string]WindowBadge{
-			"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Running},
+			"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Working},
 		},
 	}
 
@@ -325,7 +327,7 @@ func TestBuildAgentBadges(t *testing.T) {
 		{Session: "ai", Index: 1, Active: true, Name: "node", Command: "node", Path: "/Users/dt/code/tmux-window-manager"},
 	}
 	e := stubEnricher{
-		windows: map[string]WindowBadge{"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Running}},
+		windows: map[string]WindowBadge{"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Working}},
 	}
 	out := buildRows(windows, e)
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -334,17 +336,20 @@ func TestBuildAgentBadges(t *testing.T) {
 	if got := displayField(lines[0]); strings.Contains(got, Robot) || strings.Contains(got, "claude(opus)") {
 		t.Errorf("header should be plain, got: %q", lines[0])
 	}
-	// Window row shows the status-panel label, robot, and status text; the custom
-	// agent/model label remains hidden search metadata only.
+	// Window row shows the robot before the status-panel label and status text;
+	// the custom agent/model label remains hidden search metadata only.
 	display := displayField(lines[1])
-	if !strings.Contains(display, "tmux-window-manager/claude") {
+	if !strings.Contains(display, "tmux-window-manager") || !strings.Contains(display, "claude") {
 		t.Errorf("window row missing status-panel label: %q", lines[1])
 	}
 	if strings.Contains(display, "claude(opus)") || strings.Contains(display, "ai:1") || strings.Contains(display, "node") {
 		t.Errorf("window row display should not include agent/model, target, or raw command/window name: %q", lines[1])
 	}
-	if !strings.Contains(lines[1], Robot) || !strings.Contains(lines[1], Italic+"running") {
-		t.Errorf("window row missing robot/running text: %q", lines[1])
+	if !strings.Contains(lines[1], Robot) || !strings.Contains(lines[1], Italic+"working") {
+		t.Errorf("window row missing robot/working text: %q", lines[1])
+	}
+	if icon, name := strings.Index(display, "🤖"), strings.Index(display, "tmux-window-manager"); icon < 0 || name < 0 || icon > name {
+		t.Errorf("robot should precede directory/process label: %q", display)
 	}
 	if got := searchField(lines[1]); !strings.Contains(got, "claude(opus)") || !strings.Contains(got, "ai:1") || !strings.Contains(got, "node") {
 		t.Errorf("window row hidden search should include agent/model, target, and command: %q", lines[1])
@@ -355,39 +360,52 @@ func TestBuildAgentBadges(t *testing.T) {
 // italicized label on the window row where the agent runs (the session header
 // is always plain).
 func TestBuildStatusText(t *testing.T) {
+	states := []string{store.Working, store.Waiting, store.Idle, store.Error}
+	windows := make([]tmuxcli.Window, 0, len(states))
+	badges := make(map[string]WindowBadge, len(states))
+	for _, state := range states {
+		windows = append(windows, tmuxcli.Window{Session: state, Index: 1, Command: "node"})
+		badges[state+":1"] = WindowBadge{AgentLabel: "claude", Status: state}
+	}
+
+	lines := strings.Split(strings.TrimRight(buildRows(windows, stubEnricher{windows: badges}), "\n"), "\n")
+	for i, state := range states {
+		line := lines[i*2+1] // each session header is followed by its window row
+		if !strings.Contains(line, Robot) {
+			t.Errorf("%s row missing agent icon: %q", state, line)
+		}
+		if !strings.Contains(line, Italic+state) {
+			t.Errorf("%s row missing status label: %q", state, line)
+		}
+	}
+}
+
+func TestBuildGitBranchInDisplayAndSearch(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref: refs/heads/feat/branch-test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	windows := []tmuxcli.Window{
-		{Session: "run", Index: 1, Name: "a", Command: "node"},
-		{Session: "wait", Index: 1, Name: "b", Command: "node"},
-		{Session: "idle", Index: 1, Name: "c", Command: "node"},
+		{Session: "dev", Index: 1, Active: true, Name: "main", Command: "nvim", Path: dir},
 	}
-	e := stubEnricher{
-		windows: map[string]WindowBadge{
-			"run:1":  {AgentLabel: "claude", Status: store.Running},
-			"wait:1": {AgentLabel: "claude", Status: store.Waiting},
-			"idle:1": {AgentLabel: "claude", Status: store.Idle},
-		},
-	}
-	out := buildRows(windows, e)
+	out := buildRows(windows, NoopEnricher{})
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	// lines: 0 run header, 1 window, 2 wait header, 3 window, 4 idle header, 5 window
-	cases := []struct {
-		line                     int
-		wantRunning, wantWaiting bool
-	}{
-		{1, true, false},  // running window -> "running" text, no "waiting"
-		{3, false, true},  // waiting window -> "waiting" text, no "running"
-		{5, false, false}, // idle window -> robot only
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d:\n%s", len(lines), out)
 	}
-	for _, c := range cases {
-		ln := lines[c.line]
-		if !strings.Contains(ln, Robot) {
-			t.Errorf("line %d missing robot: %q", c.line, ln)
-		}
-		if got := strings.Contains(ln, Italic+"running"); got != c.wantRunning {
-			t.Errorf("line %d running=%v want %v: %q", c.line, got, c.wantRunning, ln)
-		}
-		if got := strings.Contains(ln, Italic+"waiting"); got != c.wantWaiting {
-			t.Errorf("line %d waiting=%v want %v: %q", c.line, got, c.wantWaiting, ln)
-		}
+
+	display := displayField(lines[1])
+	wantDisplay := filepath.Base(dir) + "(feat/branch-test)[nvim]"
+	if !strings.Contains(display, wantDisplay) {
+		t.Errorf("display %q should contain %q", display, wantDisplay)
+	}
+
+	search := searchField(lines[1])
+	if !strings.Contains(search, "feat/branch-test") {
+		t.Errorf("search %q should contain branch name %q", search, "feat/branch-test")
 	}
 }

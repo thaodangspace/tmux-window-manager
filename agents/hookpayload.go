@@ -23,7 +23,7 @@ type Hook struct {
 	// NotificationType is Claude's notification_type (e.g. permission_prompt,
 	// idle_prompt); empty for other events or older Claude versions.
 	NotificationType string
-	Status           string // mapped store status (idle/running/waiting)
+	Status           string // mapped store status (idle/working/waiting/error)
 	Delete           bool   // true => remove the row instead of upserting (SessionEnd)
 }
 
@@ -65,14 +65,17 @@ func ClaudeHook(agent, event string, raw []byte) (Hook, bool) {
 	case "SessionStart":
 		h.Status = store.Idle
 	case "UserPromptSubmit":
-		h.Status = store.Running
+		h.Status = store.Working
 		h.Prompt = clean(in.Prompt)
 	case "Notification":
 		h.Status = store.Waiting
 		h.Detail = clean(in.Message)
 		h.NotificationType = in.NotifyType
 	case "PreToolUse", "PostToolUse":
-		h.Status = store.Running
+		h.Status = store.Working
+		h.Detail = in.ToolName
+	case "PostToolUseFailure":
+		h.Status = store.Error
 		h.Detail = in.ToolName
 	case "Stop", "SubagentStop":
 		h.Status = store.Idle

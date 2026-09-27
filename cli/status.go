@@ -5,8 +5,8 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/thaodangspace/tmux-window-manager/store"
 	"github.com/spf13/cobra"
+	"github.com/thaodangspace/tmux-window-manager/store"
 )
 
 // newStatusCommand dumps the live agent status rows as a table — a debugging

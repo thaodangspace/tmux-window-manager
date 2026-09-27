@@ -1,5 +1,5 @@
 // Package store is the SQLite persistence layer for event-driven agent status.
-// Agents push lifecycle status (idle/running/waiting/ended) into this DB via the
+// Agents push lifecycle status (idle/working/waiting/error/ended) into this DB via the
 // `twm hook` subcommand; the picker reads it back. It replaces the old polling
 // path (capture-pane busy regex + the transcript JSON cache).
 package store

@@ -38,10 +38,21 @@ fi
 # it without hardcoding the plugin location: #(#{@twm_bin} label ...).
 tmux set-option -g @twm_bin "$BIN"
 
-# Register the sidebar hooks and dock the sidebar in every window. install is a
-# no-op teardown when the sidebar is disabled and idempotent on re-source, so it
-# is safe to run unconditionally; failures never break plugin load.
-"$BIN" sidebar install >/dev/null 2>&1 || true
+# Clean up panes, hooks, and options left by versions that shipped the removed
+# persistent sidebar feature. Only the plugin-owned hook slot (90) is touched.
+for hook in after-new-window session-created after-split-window window-linked \
+  window-unlinked pane-exited after-kill-pane window-layout-changed \
+  window-resized client-resized session-window-changed client-session-changed \
+  after-select-window window-pane-changed; do
+  tmux set-hook -gu "${hook}[90]" 2>/dev/null || true
+done
+while IFS= read -r pane; do
+  [ -n "$pane" ] && tmux kill-pane -t "$pane" 2>/dev/null || true
+done < <(tmux list-panes -a -f '#{m:* sidebar render*,#{pane_start_command}}' -F '#{pane_id}' 2>/dev/null || true)
+tmux set-option -gu @twm_sidebar_enabled 2>/dev/null || true
+while IFS= read -r window; do
+  [ -n "$window" ] && tmux set-option -wu -t "$window" @twm_sidebar_off 2>/dev/null || true
+done < <(tmux list-windows -a -F '#{window_id}' 2>/dev/null || true)
 
 KEY="$(tmux show-option -gqv @twm_key)"
 [ -n "$KEY" ] || KEY="w"

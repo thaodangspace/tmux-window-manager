@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thaodangspace/tmux-window-manager/agents"
 	"github.com/spf13/cobra"
+	"github.com/thaodangspace/tmux-window-manager/agents"
 )
 
 func newLabelCommand() *cobra.Command {

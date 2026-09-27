@@ -200,3 +200,66 @@ func TestListOmitsCurrentDirWhenNotGitRepo(t *testing.T) {
 		t.Errorf("non-Git current dir should be excluded; got %v", got)
 	}
 }
+
+func TestGitBranch(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	t.Setenv("HOME", home)
+
+	repo := filepath.Join(home, "code", "myrepo")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Normal branch
+	if err := os.WriteFile(filepath.Join(repo, ".git", "HEAD"), []byte("ref: refs/heads/feat/oauth\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := GitBranch(repo); got != "feat/oauth" {
+		t.Errorf("GitBranch() = %q, want %q", got, "feat/oauth")
+	}
+	// Nested subdir
+	subdir := filepath.Join(repo, "pkg", "auth")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := GitBranch(subdir); got != "feat/oauth" {
+		t.Errorf("GitBranch(subdir) = %q, want %q", got, "feat/oauth")
+	}
+
+	// Detached HEAD (commit SHA)
+	if err := os.WriteFile(filepath.Join(repo, ".git", "HEAD"), []byte("c0ffee1234567890abcdef\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := GitBranch(repo); got != "c0ffee1" {
+		t.Errorf("GitBranch() detached = %q, want %q", got, "c0ffee1")
+	}
+
+	// Worktree setup (.git is a file with gitdir:)
+	wtRepo := filepath.Join(home, "code", "mywt")
+	wtCommon := filepath.Join(repo, ".git", "worktrees", "mywt")
+	if err := os.MkdirAll(wtRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtCommon, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtRepo, ".git"), []byte("gitdir: "+wtCommon+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtCommon, "HEAD"), []byte("ref: refs/heads/fix/issue-99\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := GitBranch(wtRepo); got != "fix/issue-99" {
+		t.Errorf("GitBranch(worktree) = %q, want %q", got, "fix/issue-99")
+	}
+
+	// Non-git directory
+	nonGit := filepath.Join(home, "plain")
+	if err := os.MkdirAll(nonGit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := GitBranch(nonGit); got != "" {
+		t.Errorf("GitBranch(non-git) = %q, want empty", got)
+	}
+}

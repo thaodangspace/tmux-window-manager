@@ -5,14 +5,12 @@ package picker
 const (
 	Cyan   = "\033[1;36m"
 	Green  = "\033[32m"
+	Red    = "\033[31m"
 	Dim    = "\033[2m"
 	Ylw    = "\033[33m"
 	Italic = "\033[3m"
 	Rst    = "\033[0m"
 
-	// Robot suffix = an AI coding agent is present in the window/session.
-	// Status is rendered as italicized text rather than a glyph: "running"
-	// (cyan) when the agent is working, "waiting" (yellow) when it is blocked
-	// on the user and wants attention. Idle shows nothing.
+	// Robot marks an AI coding agent in the window/session.
 	Robot = " " + Ylw + "🤖" + Rst
 )

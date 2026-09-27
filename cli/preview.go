@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/thaodangspace/tmux-window-manager/preview"
 	"github.com/spf13/cobra"
+	"github.com/thaodangspace/tmux-window-manager/preview"
 )
 
 func newPreviewCommand() *cobra.Command {

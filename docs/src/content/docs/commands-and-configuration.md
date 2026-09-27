@@ -11,14 +11,7 @@ description: Reference the public commands, tmux options, paths, and environment
 | `list [--query TEXT]` | Emit grouped fzf rows, optionally preserving headers for matching rows |
 | `install-hooks [--claude] [--codex] [--dry-run]` | Merge Claude hooks and/or print the Codex notify snippet |
 | `status [--all]` | Print recorded status rows; `--all` includes dead processes |
-| `sidebar enable` / `sidebar disable` | Turn the persistent agents sidebar on/off for the tmux server |
-| `sidebar toggle [-t window]` | Hide or show the sidebar in one window |
-| `sidebar ensure [-t window]` | Idempotently reconcile the sidebar for one or all windows |
-| `sidebar install` / `sidebar uninstall` | Wire or remove the sidebar's tmux hooks and panes |
 | `completion <shell>` | Generate Cobra shell completion |
-
-The sidebar is on by default and normally reconciles itself through tmux hooks;
-see the [Agents sidebar](/sidebar/) guide for configuration and troubleshooting.
 
 The binary also re-invokes hidden implementation commands. They are documented
 for troubleshooting and integrations but normally should not be called by hand:
@@ -29,7 +22,6 @@ for troubleshooting and integrations but normally should not be called by hand:
 | `preview <target>` | Render pane previews for an fzf target |
 | `label <pid> [fallback]` | Resolve the nearest coding-agent process name for a status-bar label |
 | `hook [event] [--agent NAME] [--codex]` | Normalize and record an agent lifecycle payload |
-| `sidebar render` | Run the in-pane sidebar render loop (started by `sidebar ensure`) |
 
 Use `tmux-window-manager <command> --help` for current argument and flag details.
 
@@ -39,8 +31,6 @@ Use `tmux-window-manager <command> --help` for current argument and flag details
 | --- | --- | --- |
 | `@twm_key` | `w` | Prefix key that opens the picker |
 | `@twm_bin` | Set automatically | Absolute binary path published by the plugin entrypoint |
-| `@twm_sidebar_enabled` | Unset | Runtime sidebar toggle set by `sidebar enable`/`disable` (`1`/`0`); overrides `twm.toml` |
-| `@twm_sidebar_off` | Unset | Per-window flag set by `sidebar toggle` (`1` hides the sidebar in that window) |
 
 Override the key before loading the plugin:
 
