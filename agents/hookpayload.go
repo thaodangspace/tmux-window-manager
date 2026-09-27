@@ -2,6 +2,7 @@ package agents
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/thaodangspace/tmux-window-manager/store"
 )
@@ -19,8 +20,11 @@ type Hook struct {
 	Model          string
 	Latest         string
 	Detail         string
-	Status         string // mapped store status (idle/running/waiting)
-	Delete         bool   // true => remove the row instead of upserting (SessionEnd)
+	// NotificationType is Claude's notification_type (e.g. permission_prompt,
+	// idle_prompt); empty for other events or older Claude versions.
+	NotificationType string
+	Status           string // mapped store status (idle/running/waiting)
+	Delete           bool   // true => remove the row instead of upserting (SessionEnd)
 }
 
 // claudeHookInput is the subset of Claude Code's hook stdin JSON we read. Unknown
@@ -30,9 +34,10 @@ type claudeHookInput struct {
 	TranscriptPath string `json:"transcript_path"`
 	Cwd            string `json:"cwd"`
 	HookEventName  string `json:"hook_event_name"`
-	Prompt         string `json:"prompt"`    // UserPromptSubmit
-	Message        string `json:"message"`   // Notification
-	ToolName       string `json:"tool_name"` // Pre/PostToolUse
+	Prompt         string `json:"prompt"`            // UserPromptSubmit
+	Message        string `json:"message"`           // Notification
+	NotifyType     string `json:"notification_type"` // Notification
+	ToolName       string `json:"tool_name"`         // Pre/PostToolUse
 }
 
 // ClaudeHook normalizes a Claude Code hook payload. event is taken from argv
@@ -65,6 +70,7 @@ func ClaudeHook(agent, event string, raw []byte) (Hook, bool) {
 	case "Notification":
 		h.Status = store.Waiting
 		h.Detail = clean(in.Message)
+		h.NotificationType = in.NotifyType
 	case "PreToolUse", "PostToolUse":
 		h.Status = store.Running
 		h.Detail = in.ToolName
@@ -110,4 +116,15 @@ func CodexHook(raw []byte) (Hook, bool) {
 		h.Prompt = clean(in.InputMessages[0])
 	}
 	return h, true
+}
+
+// IsIdlePrompt reports whether a Notification is Claude's "waiting for your
+// input" reminder (sent after the turn already stopped) rather than a request
+// that blocks work, such as a permission prompt. Older Claude versions omit
+// notification_type, so the message text is the fallback signal.
+func (h Hook) IsIdlePrompt() bool {
+	if h.NotificationType != "" {
+		return h.NotificationType == "idle_prompt"
+	}
+	return strings.Contains(strings.ToLower(h.Detail), "waiting for your input")
 }

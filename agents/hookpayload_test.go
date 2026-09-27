@@ -136,3 +136,22 @@ func TestCodexHookRejectsBad(t *testing.T) {
 		t.Fatal("expected ok=false without thread-id")
 	}
 }
+
+func TestClaudeHookIdlePrompt(t *testing.T) {
+	tests := []struct {
+		body string
+		want bool
+	}{
+		{`{"session_id":"s","message":"Claude is waiting for your input","notification_type":"idle_prompt"}`, true},
+		{`{"session_id":"s","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}`, false},
+		// Older Claude versions omit notification_type; fall back to the text.
+		{`{"session_id":"s","message":"Claude is waiting for your input"}`, true},
+		{`{"session_id":"s","message":"Claude needs your permission to use Bash"}`, false},
+	}
+	for _, tt := range tests {
+		h, ok := ClaudeHook("claude", "Notification", []byte(tt.body))
+		if !ok || h.IsIdlePrompt() != tt.want {
+			t.Errorf("IsIdlePrompt(%s) = %v (ok=%v), want %v", tt.body, h.IsIdlePrompt(), ok, tt.want)
+		}
+	}
+}

@@ -102,7 +102,7 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 			prev = w.Session
 		}
 		r := newWindowRow(w, e.Window(w.Session, w.Index, w.Name, w.Command))
-		if !fuzzyMatch(w.Session, query) && !fuzzyMatch(r.search, query) {
+		if !searchMatch(w.Session, query) && !searchMatch(r.search, query) {
 			r.content = searchablePaneText(panesByWindow[r.target])
 		}
 		group = append(group, r)
@@ -196,65 +196,25 @@ func cleanSearch(s string) string {
 }
 
 func filterGroup(session string, rows []windowRow, query string) []windowRow {
-	if fuzzyMatch(session, query) {
+	if searchMatch(session, query) {
 		return rows
 	}
 	out := make([]windowRow, 0, len(rows))
 	for _, r := range rows {
-		if fuzzyMatch(r.search, query) || fuzzyMatchPaneContent(r.content, query) {
+		if searchMatch(r.search, query) || searchMatch(r.content, query) {
 			out = append(out, r)
 		}
 	}
 	return out
 }
 
-// fuzzyMatch applies fzf-like, case-insensitive subsequence matching. Query
-// words are matched independently so spaces narrow the result rather than
-// needing to occur literally in the indexed text.
-func fuzzyMatch(text, query string) bool {
-	tokens := strings.Fields(text)
+// searchMatch performs case-insensitive substring matching. Query words are
+// matched independently, but every word must occur contiguously: "claude"
+// never matches "calude" or characters scattered through an opaque ID.
+func searchMatch(text, query string) bool {
+	haystack := strings.ToLower(text)
 	for _, word := range strings.Fields(strings.ToLower(query)) {
-		matched := false
-		for _, token := range tokens {
-			if fuzzyMatchWord(token, word) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return false
-		}
-	}
-	return true
-}
-
-func fuzzyMatchWord(text, word string) bool {
-	needle := []rune(word)
-	at := 0
-	for _, r := range []rune(strings.ToLower(text)) {
-		if at < len(needle) && r == needle[at] {
-			at++
-		}
-	}
-	return at == len(needle)
-}
-
-// fuzzyMatchPaneContent constrains each query word to one whitespace-delimited
-// token. If the whole captured screen (or even a long prose line) were treated
-// as one string, common characters spread across unrelated words would make
-// almost every pane a fuzzy match. Tokens still cover preview values such as
-// @thaodangspace/agent-sandbox and filesystem paths.
-func fuzzyMatchPaneContent(content, query string) bool {
-	tokens := strings.Fields(content)
-	for _, word := range strings.Fields(strings.ToLower(query)) {
-		matched := false
-		for _, token := range tokens {
-			if fuzzyMatchWord(token, word) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
+		if !strings.Contains(haystack, word) {
 			return false
 		}
 	}

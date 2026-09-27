@@ -10,7 +10,7 @@ import (
 
 // schemaVersion is bumped whenever the schema changes; Migrate is a no-op once
 // the DB is already at this version (tracked via PRAGMA user_version).
-const schemaVersion = 1
+const schemaVersion = 2
 
 // maxField bounds untrusted text fields (prompt/latest/detail) before insert.
 const maxField = 4096
@@ -38,6 +38,14 @@ type Status struct {
 	Latest    string // most recent assistant message
 	UpdatedAt int64  // unix milliseconds
 	Event     string // history-only: the hook event that produced this write
+
+	// TurnPrompt and TurnStartedAt describe the current turn: each
+	// UserPromptSubmit replaces them, other writes keep the stored values.
+	TurnPrompt    string
+	TurnStartedAt int64 // unix milliseconds; 0 = unknown
+	// NotifiedAt is when a notification was last delivered for this session
+	// (unix milliseconds). It is written only by MarkNotified.
+	NotifiedAt int64
 }
 
 // DB wraps the sql.DB handle.
@@ -75,7 +83,7 @@ func OpenAt(path string) (*DB, error) {
 // Close releases the underlying handle.
 func (db *DB) Close() error { return db.sql.Close() }
 
-// Migrate applies the v1 schema once. Idempotent: a second call on an
+// Migrate brings the schema up to schemaVersion. Idempotent: a call on an
 // already-migrated DB returns immediately.
 func (db *DB) Migrate() error {
 	var v int
@@ -85,8 +93,10 @@ func (db *DB) Migrate() error {
 	if v >= schemaVersion {
 		return nil
 	}
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS agent_status (
+	var stmts []string
+	if v < 1 {
+		stmts = append(stmts,
+			`CREATE TABLE IF NOT EXISTS agent_status (
 			agent          TEXT NOT NULL,
 			session_id     TEXT NOT NULL,
 			cwd            TEXT NOT NULL DEFAULT '',
@@ -99,8 +109,8 @@ func (db *DB) Migrate() error {
 			updated_at     INTEGER NOT NULL,
 			PRIMARY KEY (agent, session_id)
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_status_cwd ON agent_status(cwd)`,
-		`CREATE TABLE IF NOT EXISTS agent_event (
+			`CREATE INDEX IF NOT EXISTS idx_status_cwd ON agent_status(cwd)`,
+			`CREATE TABLE IF NOT EXISTS agent_event (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			agent      TEXT NOT NULL,
 			session_id TEXT NOT NULL,
@@ -108,24 +118,37 @@ func (db *DB) Migrate() error {
 			status     TEXT NOT NULL,
 			cwd        TEXT NOT NULL DEFAULT '',
 			at         INTEGER NOT NULL
-		)`,
-		fmt.Sprintf("PRAGMA user_version = %d", schemaVersion),
+		)`)
 	}
+	if v < 2 {
+		stmts = append(stmts,
+			`ALTER TABLE agent_status ADD COLUMN turn_prompt TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE agent_status ADD COLUMN turn_started_at INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE agent_status ADD COLUMN notified_at INTEGER NOT NULL DEFAULT 0`)
+	}
+	stmts = append(stmts, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion))
+
+	tx, err := db.sql.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	for _, s := range stmts {
-		if _, err := db.sql.Exec(s); err != nil {
+		if _, err := tx.Exec(s); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Upsert writes the agent's current status, keyed by (agent, session_id). The
-// first non-empty prompt is preserved across turns; model/latest update when a
-// newer non-empty value arrives. When s.Event is set, a history row is appended.
+// first non-empty prompt is preserved across turns; model/latest and the
+// turn prompt/start update when a newer non-empty value arrives. When s.Event is set, a history row is appended.
 func (db *DB) Upsert(s Status) error {
 	s.Detail = truncate(s.Detail)
 	s.Prompt = truncate(s.Prompt)
 	s.Latest = truncate(s.Latest)
+	s.TurnPrompt = truncate(s.TurnPrompt)
 
 	tx, err := db.sql.Begin()
 	if err != nil {
@@ -134,8 +157,9 @@ func (db *DB) Upsert(s Status) error {
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`INSERT INTO agent_status
-		(agent, session_id, cwd, pid, status, detail, model, prompt, latest_message, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?)
+		(agent, session_id, cwd, pid, status, detail, model, prompt, latest_message, updated_at,
+		 turn_prompt, turn_started_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(agent, session_id) DO UPDATE SET
 			cwd            = excluded.cwd,
 			pid            = excluded.pid,
@@ -144,9 +168,11 @@ func (db *DB) Upsert(s Status) error {
 			model          = CASE WHEN excluded.model <> '' THEN excluded.model ELSE agent_status.model END,
 			prompt         = CASE WHEN agent_status.prompt = '' THEN excluded.prompt ELSE agent_status.prompt END,
 			latest_message = CASE WHEN excluded.latest_message <> '' THEN excluded.latest_message ELSE agent_status.latest_message END,
-			updated_at     = excluded.updated_at`,
+			updated_at     = excluded.updated_at,
+			turn_prompt     = CASE WHEN excluded.turn_prompt <> '' THEN excluded.turn_prompt ELSE agent_status.turn_prompt END,
+			turn_started_at = CASE WHEN excluded.turn_started_at > 0 THEN excluded.turn_started_at ELSE agent_status.turn_started_at END`,
 		s.Agent, s.SessionID, s.Cwd, s.Pid, s.Status, s.Detail,
-		s.Model, s.Prompt, s.Latest, s.UpdatedAt); err != nil {
+		s.Model, s.Prompt, s.Latest, s.UpdatedAt, s.TurnPrompt, s.TurnStartedAt); err != nil {
 		return err
 	}
 
@@ -164,10 +190,11 @@ func (db *DB) Upsert(s Status) error {
 // session has no row.
 func (db *DB) Get(agent, sessionID string) (status Status, found bool, err error) {
 	err = db.sql.QueryRow(`SELECT agent, session_id, cwd, pid, status, detail,
-		model, prompt, latest_message, updated_at FROM agent_status
+		model, prompt, latest_message, updated_at, turn_prompt, turn_started_at, notified_at FROM agent_status
 		WHERE agent = ? AND session_id = ?`, agent, sessionID).Scan(
 		&status.Agent, &status.SessionID, &status.Cwd, &status.Pid, &status.Status,
-		&status.Detail, &status.Model, &status.Prompt, &status.Latest, &status.UpdatedAt)
+		&status.Detail, &status.Model, &status.Prompt, &status.Latest, &status.UpdatedAt,
+		&status.TurnPrompt, &status.TurnStartedAt, &status.NotifiedAt)
 	if err == sql.ErrNoRows {
 		return Status{}, false, nil
 	}
@@ -175,6 +202,14 @@ func (db *DB) Get(agent, sessionID string) (status Status, found bool, err error
 		return Status{}, false, err
 	}
 	return status, true, nil
+}
+
+// MarkNotified records that a notification was delivered for the session at
+// the given unix-millisecond time. Missing rows are not an error.
+func (db *DB) MarkNotified(agent, sessionID string, at int64) error {
+	_, err := db.sql.Exec(`UPDATE agent_status SET notified_at = ? WHERE agent = ? AND session_id = ?`,
+		at, agent, sessionID)
+	return err
 }
 
 // Delete removes a session's status row (used on SessionEnd and to reap dead
@@ -187,7 +222,7 @@ func (db *DB) Delete(agent, sessionID string) error {
 // All returns every status row, oldest first.
 func (db *DB) All() ([]Status, error) {
 	rows, err := db.sql.Query(`SELECT agent, session_id, cwd, pid, status, detail,
-		model, prompt, latest_message, updated_at FROM agent_status ORDER BY updated_at ASC`)
+		model, prompt, latest_message, updated_at, turn_prompt, turn_started_at, notified_at FROM agent_status ORDER BY updated_at ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +232,8 @@ func (db *DB) All() ([]Status, error) {
 	for rows.Next() {
 		var s Status
 		if err := rows.Scan(&s.Agent, &s.SessionID, &s.Cwd, &s.Pid, &s.Status,
-			&s.Detail, &s.Model, &s.Prompt, &s.Latest, &s.UpdatedAt); err != nil {
+			&s.Detail, &s.Model, &s.Prompt, &s.Latest, &s.UpdatedAt,
+			&s.TurnPrompt, &s.TurnStartedAt, &s.NotifiedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

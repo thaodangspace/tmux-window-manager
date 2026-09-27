@@ -74,13 +74,25 @@ func TestCompose(t *testing.T) {
 			name: "waiting",
 			event: Event{Kind: Waiting, Agent: "claude", Cwd: "/Users/dev/code/tmux-window-manager",
 				SessionID: "session-1", Prompt: " Check\nstatus ", Detail: " Permission\nrequired\tto continue. "},
-			want: "🔔 Claude needs input · tmux\\-window\\-manager\n*Session:* session\\-1\n*Prompt:* Check status\n*Detail:* Permission required to continue\\.",
+			want: "🔔 Claude needs input · tmux\\-window\\-manager\n*Session:* session\n*Prompt:* Check status\n*Detail:* Permission required to continue\\.",
 		},
 		{
-			name: "completed omits assistant detail",
+			name: "completed without opt-in response omits assistant detail",
 			event: Event{Kind: Completed, Agent: "claude", Cwd: "/Users/dev/code/project/",
-				SessionID: "session-2", Prompt: "Run tests", Detail: "Tests pass."},
-			want: "✅ Claude finished · project\n*Session:* session\\-2\n*Prompt:* Run tests",
+				SessionID: "3f2a9c1e-8b7d-4e21-9a0b-1234567890ab", Prompt: "Run tests", Detail: "Tests pass."},
+			want: "✅ Claude finished · project\n*Session:* 3f2a9c1e\n*Prompt:* Run tests",
+		},
+		{
+			name: "completed with location, model, duration and response",
+			event: Event{Kind: Completed, Agent: "claude", Cwd: "/work/project", SessionID: "3f2a9c1e-8b7d",
+				Location: "work:3", Model: "Opus 4.5", Prompt: "Run tests", Duration: 4*time.Minute + 12*time.Second,
+				Response: "All tests pass.\nNothing else to do."},
+			want: "✅ Claude finished · project · 4m12s\n*Where:* work:3\n*Model:* Opus 4\\.5\n*Prompt:* Run tests\n*Response:* All tests pass\\. Nothing else to do\\.",
+		},
+		{
+			name:  "waiting ignores response",
+			event: Event{Kind: Waiting, Agent: "claude", Cwd: "/work/project", Location: "w:1", Prompt: "p", Response: "secret reply"},
+			want:  "🔔 Claude needs input · project\n*Where:* w:1\n*Prompt:* p",
 		},
 		{
 			name:  "missing session and prompt",
@@ -101,8 +113,8 @@ func TestCompose(t *testing.T) {
 		{
 			name: "escapes dynamic MarkdownV2 syntax",
 			event: Event{Kind: Waiting, Agent: "pi_agent", Cwd: "/work/my.project",
-				SessionID: "s_[1]", Prompt: "fix *all* (now)!"},
-			want: "🔔 Pi\\_agent needs input · my\\.project\n*Session:* s\\_\\[1\\]\n*Prompt:* fix \\*all\\* \\(now\\)\\!",
+				SessionID: "s_[1]", Location: "my_sess:2", Prompt: "fix *all* (now)!"},
+			want: "🔔 Pi\\_agent needs input · my\\.project\n*Where:* my\\_sess:2\n*Prompt:* fix \\*all\\* \\(now\\)\\!",
 		},
 		{
 			name:  "unknown kind",
@@ -112,7 +124,7 @@ func TestCompose(t *testing.T) {
 		{
 			name:  "valid attach link",
 			event: Event{Kind: Completed, Agent: "claude", Cwd: "/work/project", SessionID: "session-3", Prompt: "Run tests", AttachURL: "http://127.0.0.1:49152/attach/Abc_123-opaque-token-xx"},
-			want:  "✅ Claude finished · project\n*Session:* session\\-3\n*Prompt:* Run tests\n[Attach in tmux](http://127.0.0.1:49152/attach/Abc_123-opaque-token-xx)",
+			want:  "✅ Claude finished · project\n*Session:* session\n*Prompt:* Run tests\n[Attach in tmux](http://127.0.0.1:49152/attach/Abc_123-opaque-token-xx)",
 		},
 		{
 			name:  "invalid attach link omitted",
@@ -130,6 +142,38 @@ func TestCompose(t *testing.T) {
 	}
 }
 
+func TestComposeCapsLongFields(t *testing.T) {
+	got := Compose(Event{
+		Kind:     Completed,
+		Agent:    "claude",
+		Cwd:      "/work/project",
+		Prompt:   strings.Repeat("p", 1000),
+		Response: strings.Repeat("界", 2000),
+	})
+	if !strings.Contains(got, strings.Repeat("p", maxPromptChars-1)+"…\n") ||
+		strings.Contains(got, strings.Repeat("p", maxPromptChars)) {
+		t.Fatalf("prompt not capped at %d runes", maxPromptChars)
+	}
+	if !strings.HasSuffix(got, strings.Repeat("界", maxResponseChars-1)+"…") ||
+		strings.Contains(got, strings.Repeat("界", maxResponseChars)) {
+		t.Fatalf("response not capped at %d runes", maxResponseChars)
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0:                              "",
+		500 * time.Millisecond:         "",
+		45 * time.Second:               "45s",
+		4*time.Minute + 12*time.Second: "4m12s",
+		time.Hour + 3*time.Minute + 59*time.Second: "1h03m",
+	} {
+		if got := formatDuration(d); got != want {
+			t.Errorf("formatDuration(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
 func TestComposeAttachLinkPreservedWhenTextIsTruncated(t *testing.T) {
 	const link = "http://127.0.0.1:49152/attach/opaque-token-1234567890"
 	got := Compose(Event{
@@ -137,7 +181,7 @@ func TestComposeAttachLinkPreservedWhenTextIsTruncated(t *testing.T) {
 		Agent:     "claude",
 		Cwd:       "/private/work/project",
 		SessionID: "session-id",
-		Prompt:    strings.Repeat("界", maxTelegramTextChars+100),
+		Location:  strings.Repeat("界", maxTelegramTextChars+100),
 		AttachURL: link,
 	})
 	if !strings.Contains(got, "[Attach in tmux]("+link+")") {
@@ -176,7 +220,7 @@ func TestComposeBoundsMultibyteText(t *testing.T) {
 		Agent:     "claude",
 		Cwd:       "/private/work/project",
 		SessionID: "session-id",
-		Prompt:    strings.Repeat("界", maxTelegramTextChars+100),
+		Location:  strings.Repeat("界", maxTelegramTextChars+100),
 	})
 	if !utf8.ValidString(got) {
 		t.Fatal("message is not valid UTF-8")
@@ -214,15 +258,19 @@ func TestTelegramSendSuccess(t *testing.T) {
 			t.Errorf("Content-Type = %q", got)
 		}
 		var payload struct {
-			ChatID             string `json:"chat_id"`
-			Text               string `json:"text"`
-			ParseMode          string `json:"parse_mode"`
-			LinkPreviewOptions struct {
+			ChatID              string `json:"chat_id"`
+			Text                string `json:"text"`
+			ParseMode           string `json:"parse_mode"`
+			DisableNotification bool   `json:"disable_notification"`
+			LinkPreviewOptions  struct {
 				IsDisabled bool `json:"is_disabled"`
 			} `json:"link_preview_options"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request: %v", err)
+		}
+		if want := calls.Load() == 2; payload.DisableNotification != want {
+			t.Errorf("call %d disable_notification = %v, want %v", calls.Load(), payload.DisableNotification, want)
 		}
 		if payload.ChatID != chat || payload.Text != text {
 			t.Errorf("payload = %+v", payload)
@@ -238,11 +286,14 @@ func TestTelegramSendSuccess(t *testing.T) {
 	defer server.Close()
 
 	sender := newTelegram(Config{BotToken: token, ChatID: chat}, server.URL, server.Client())
-	if err := sender.Send(context.Background(), text); err != nil {
+	if err := sender.Send(context.Background(), text, false); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("calls = %d, want 1", calls.Load())
+	if err := sender.Send(context.Background(), text, true); err != nil {
+		t.Fatalf("silent Send() error = %v", err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("calls = %d, want 2", calls.Load())
 	}
 }
 
@@ -286,7 +337,7 @@ func TestTelegramSendFailuresAreCategorizedAndRedacted(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 			sender := newTelegram(Config{BotToken: token, ChatID: "chat"}, server.URL, server.Client())
-			err := sender.Send(context.Background(), "message")
+			err := sender.Send(context.Background(), "message", false)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("error = %v, want category %v", err, tt.wantErr)
 			}
@@ -302,7 +353,7 @@ func TestTelegramTransportFailureAndTimeoutAreRedacted(t *testing.T) {
 			return nil, fmt.Errorf("network failed near %s", token)
 		})}
 		sender := newTelegram(Config{BotToken: token, ChatID: "chat"}, "https://example.invalid", client)
-		err := sender.Send(context.Background(), "message")
+		err := sender.Send(context.Background(), "message", false)
 		if !errors.Is(err, ErrTransport) {
 			t.Fatalf("error = %v, want %v", err, ErrTransport)
 		}
@@ -319,7 +370,7 @@ func TestTelegramTransportFailureAndTimeoutAreRedacted(t *testing.T) {
 		client.Timeout = 10 * time.Millisecond
 		sender := newTelegram(Config{BotToken: token, ChatID: "chat"}, server.URL, client)
 		started := time.Now()
-		err := sender.Send(context.Background(), "message")
+		err := sender.Send(context.Background(), "message", false)
 		if !errors.Is(err, ErrTransport) {
 			t.Fatalf("error = %v, want %v", err, ErrTransport)
 		}
@@ -343,7 +394,7 @@ func TestTelegramRejectsRedirect(t *testing.T) {
 	defer source.Close()
 
 	sender := newTelegram(Config{BotToken: token, ChatID: "chat"}, source.URL, source.Client())
-	err := sender.Send(context.Background(), "message")
+	err := sender.Send(context.Background(), "message", false)
 	if !errors.Is(err, ErrTransport) {
 		t.Fatalf("error = %v, want %v", err, ErrTransport)
 	}
@@ -356,7 +407,7 @@ func TestTelegramRejectsRedirect(t *testing.T) {
 func TestTelegramRequestAndProductionDefaults(t *testing.T) {
 	const token = "request-secret"
 	bad := newTelegram(Config{BotToken: token, ChatID: "chat"}, "://bad-url", &http.Client{})
-	err := bad.Send(context.Background(), "message")
+	err := bad.Send(context.Background(), "message", false)
 	if !errors.Is(err, ErrRequest) {
 		t.Fatalf("error = %v, want %v", err, ErrRequest)
 	}
@@ -375,12 +426,12 @@ func TestTelegramRequestAndProductionDefaults(t *testing.T) {
 		"empty chat": newTelegram(Config{BotToken: token}, "https://example.invalid", &http.Client{}),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := sender.Send(context.Background(), "message"); !errors.Is(err, ErrRequest) {
+			if err := sender.Send(context.Background(), "message", false); !errors.Is(err, ErrRequest) {
 				t.Fatalf("error = %v, want %v", err, ErrRequest)
 			}
 		})
 	}
-	if err := production.Send(context.Background(), ""); !errors.Is(err, ErrRequest) {
+	if err := production.Send(context.Background(), "", false); !errors.Is(err, ErrRequest) {
 		t.Fatalf("empty message error = %v, want %v", err, ErrRequest)
 	}
 }

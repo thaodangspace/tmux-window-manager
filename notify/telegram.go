@@ -30,6 +30,12 @@ const (
 	telegramTimeout         = 2 * time.Second
 	maxTelegramTextChars    = 4000 // safely below Telegram's 4096-character limit
 	maxTelegramResponse     = 64 * 1024
+
+	// Per-field budgets keep a phone notification readable; the whole message
+	// is still bounded by maxTelegramTextChars.
+	maxPromptChars   = 300
+	maxDetailChars   = 500
+	maxResponseChars = 800
 )
 
 // Kind is a user-attention transition that can be rendered as a notification.
@@ -41,14 +47,19 @@ const (
 )
 
 // Event is the vendor-neutral input used to compose a notification. Detail is
-// used only for Waiting; Completed deliberately omits assistant response text.
+// used only for Waiting and Response only for Completed; callers leave
+// Response empty unless the user opted in (Options.IncludeResponse).
 type Event struct {
 	Kind      Kind
 	Agent     string
 	Cwd       string
-	SessionID string
-	Prompt    string
+	SessionID string // shown (shortened) only when Location is unknown
+	Location  string // tmux session:window of the agent pane
+	Model     string
+	Prompt    string // the prompt of the turn being reported
 	Detail    string
+	Response  string        // excerpt of the agent's last reply
+	Duration  time.Duration // how long the turn ran; 0 = unknown
 	// AttachURL is an optional validated loopback URL that focuses the
 	// originating tmux pane. Invalid URLs are ignored by Compose.
 	AttachURL string
@@ -59,6 +70,7 @@ type Event struct {
 type Config struct {
 	BotToken string
 	ChatID   string
+	Options  Options
 }
 
 // ErrPartialConfig means exactly one required Telegram variable is set.
@@ -110,21 +122,31 @@ func Compose(event Event) string {
 		return ""
 	}
 
-	sessionID := sanitizeText(event.SessionID)
-	if sessionID == "" {
-		sessionID = "unknown-session"
+	message := icon + " " + agent + " " + action + " · " + project
+	if d := formatDuration(event.Duration); d != "" {
+		message += " · " + d
 	}
-	prompt := sanitizeText(event.Prompt)
+	if location := sanitizeText(event.Location); location != "" {
+		message += "\nWhere: " + location
+	} else {
+		message += "\nSession: " + shortSessionID(event.SessionID)
+	}
+	if model := sanitizeText(event.Model); model != "" {
+		message += "\nModel: " + model
+	}
+	prompt := truncateRunes(sanitizeText(event.Prompt), maxPromptChars)
 	if prompt == "" {
 		prompt = "unavailable"
 	}
-
-	message := icon + " " + agent + " " + action + " · " + project +
-		"\nSession: " + sessionID +
-		"\nPrompt: " + prompt
-	if event.Kind == Waiting {
-		if detail := sanitizeText(event.Detail); detail != "" {
+	message += "\nPrompt: " + prompt
+	switch event.Kind {
+	case Waiting:
+		if detail := truncateRunes(sanitizeText(event.Detail), maxDetailChars); detail != "" {
 			message += "\nDetail: " + detail
+		}
+	case Completed:
+		if response := truncateRunes(sanitizeText(event.Response), maxResponseChars); response != "" {
+			message += "\nResponse: " + response
 		}
 	}
 
@@ -134,6 +156,37 @@ func Compose(event Event) string {
 		message = truncateWithSuffix(message, "\n"+link, maxTelegramTextChars)
 	}
 	return formatMarkdownV2(truncateRunes(message, maxTelegramTextChars))
+}
+
+// shortSessionID keeps enough of an opaque session id to tell sessions apart
+// without filling the message with a full UUID.
+func shortSessionID(id string) string {
+	id = sanitizeText(id)
+	if id == "" {
+		return "unknown-session"
+	}
+	if head, _, ok := strings.Cut(id, "-"); ok && len(head) >= 6 {
+		return head
+	}
+	return truncateRunes(id, 12)
+}
+
+// formatDuration renders a turn length compactly (45s, 4m12s, 1h03m).
+// Durations under one second are treated as unknown.
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return ""
+	}
+	d = d.Round(time.Second)
+	h, m, sec := int(d/time.Hour), int(d%time.Hour/time.Minute), int(d%time.Minute/time.Second)
+	switch {
+	case h > 0:
+		return fmt.Sprintf("%dh%02dm", h, m)
+	case m > 0:
+		return fmt.Sprintf("%dm%02ds", m, sec)
+	default:
+		return fmt.Sprintf("%ds", sec)
+	}
 }
 
 func formatMarkdownV2(message string) string {
@@ -313,21 +366,23 @@ func newTelegram(cfg Config, baseURL string, client *http.Client) *Telegram {
 	}
 }
 
-// Send calls Telegram Bot API sendMessage. All returned errors are deliberately
-// sanitized because standard net/http errors can include the token-bearing URL.
-func (t *Telegram) Send(ctx context.Context, text string) error {
+// Send calls Telegram Bot API sendMessage. A silent message is delivered
+// without a sound or vibration. All returned errors are deliberately sanitized
+// because standard net/http errors can include the token-bearing URL.
+func (t *Telegram) Send(ctx context.Context, text string, silent bool) error {
 	if t == nil || t.client == nil || t.endpoint == "" || t.chatID == "" || text == "" {
 		return ErrRequest
 	}
 	payload := struct {
-		ChatID             string `json:"chat_id"`
-		Text               string `json:"text"`
-		ParseMode          string `json:"parse_mode"`
-		LinkPreviewOptions struct {
+		ChatID              string `json:"chat_id"`
+		Text                string `json:"text"`
+		ParseMode           string `json:"parse_mode"`
+		DisableNotification bool   `json:"disable_notification,omitempty"`
+		LinkPreviewOptions  struct {
 			IsDisabled bool `json:"is_disabled"`
 		} `json:"link_preview_options"`
 	}{
-		ChatID: t.chatID, Text: text, ParseMode: "MarkdownV2",
+		ChatID: t.chatID, Text: text, ParseMode: "MarkdownV2", DisableNotification: silent,
 		LinkPreviewOptions: struct {
 			IsDisabled bool `json:"is_disabled"`
 		}{IsDisabled: true},

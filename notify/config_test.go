@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigFileAndEnvironmentPrecedence(t *testing.T) {
@@ -26,11 +27,11 @@ func TestLoadConfigFileAndEnvironmentPrecedence(t *testing.T) {
 		unreadable bool
 	}{
 		{name: "missing file is disabled"},
-		{name: "file config", contents: strPtr("[telegram]\nbot_token = \"  " + fileToken + "  \"\nchat_id = \" " + fileChat + " \"\n"), want: Config{BotToken: fileToken, ChatID: fileChat}, enabled: true},
+		{name: "file config", contents: strPtr("[telegram]\nbot_token = \"  " + fileToken + "  \"\nchat_id = \" " + fileChat + " \"\n"), want: Config{BotToken: fileToken, ChatID: fileChat, Options: DefaultOptions()}, enabled: true},
 		{name: "partial file", contents: strPtr("[telegram]\nbot_token = \"" + fileToken + "\"\n"), wantErr: ErrPartialConfig},
-		{name: "environment token overrides file", contents: strPtr("[telegram]\nbot_token = \"" + fileToken + "\"\nchat_id = \"" + fileChat + "\"\n"), env: map[string]string{botTokenEnv: envToken}, want: Config{BotToken: envToken, ChatID: fileChat}, enabled: true},
-		{name: "environment chat completes file", contents: strPtr("[telegram]\nbot_token = \"" + fileToken + "\"\n"), env: map[string]string{chatIDEnv: envChat}, want: Config{BotToken: fileToken, ChatID: envChat}, enabled: true},
-		{name: "complete environment skips malformed file", contents: strPtr("not valid = [toml"), env: map[string]string{botTokenEnv: envToken, chatIDEnv: envChat}, want: Config{BotToken: envToken, ChatID: envChat}, enabled: true},
+		{name: "environment token overrides file", contents: strPtr("[telegram]\nbot_token = \"" + fileToken + "\"\nchat_id = \"" + fileChat + "\"\n"), env: map[string]string{botTokenEnv: envToken}, want: Config{BotToken: envToken, ChatID: fileChat, Options: DefaultOptions()}, enabled: true},
+		{name: "environment chat completes file", contents: strPtr("[telegram]\nbot_token = \"" + fileToken + "\"\n"), env: map[string]string{chatIDEnv: envChat}, want: Config{BotToken: fileToken, ChatID: envChat, Options: DefaultOptions()}, enabled: true},
+		{name: "complete environment skips malformed file", contents: strPtr("not valid = [toml"), env: map[string]string{botTokenEnv: envToken, chatIDEnv: envChat}, want: Config{BotToken: envToken, ChatID: envChat, Options: DefaultOptions()}, enabled: true},
 		{name: "malformed file", contents: strPtr("[telegram\nbot_token = \"never-leak-secret\""), wantErr: ErrConfigFile},
 		{name: "unreadable path", unreadable: true, wantErr: ErrConfigFile},
 	}
@@ -99,8 +100,45 @@ func TestLoadConfigUsesConfiguredPath(t *testing.T) {
 	}
 
 	cfg, enabled, err := LoadConfig()
-	if err != nil || !enabled || cfg != (Config{BotToken: "token", ChatID: "chat"}) {
+	if err != nil || !enabled || cfg != (Config{BotToken: "token", ChatID: "chat", Options: DefaultOptions()}) {
 		t.Fatalf("LoadConfig() = %+v, %v, %v", cfg, enabled, err)
+	}
+}
+
+func TestLoadConfigOptions(t *testing.T) {
+	const creds = "[telegram]\nbot_token = \"t\"\nchat_id = \"c\"\n"
+	tests := []struct {
+		name  string
+		extra string
+		env   map[string]string
+		want  Options
+	}{
+		{name: "defaults", want: DefaultOptions()},
+		{
+			name:  "all set",
+			extra: "include_response = true\nmin_turn_seconds = 90\nskip_when_focused = false\n",
+			want:  Options{IncludeResponse: true, MinTurn: 90 * time.Second},
+		},
+		{name: "zero min turn sends every turn", extra: "min_turn_seconds = 0\n", want: Options{SkipWhenFocused: true}},
+		{name: "negative min turn keeps default", extra: "min_turn_seconds = -5\n", want: DefaultOptions()},
+		{
+			name:  "options apply with environment credentials",
+			extra: "include_response = true\n",
+			env:   map[string]string{botTokenEnv: "env-t", chatIDEnv: "env-c"},
+			want:  Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), configFileName)
+			if err := os.WriteFile(path, []byte(creds+tt.extra), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, enabled, err := loadConfig(path, func(key string) string { return tt.env[key] })
+			if err != nil || !enabled || cfg.Options != tt.want {
+				t.Fatalf("loadConfig() options = %+v, %v, %v; want %+v", cfg.Options, enabled, err, tt.want)
+			}
+		})
 	}
 }
 

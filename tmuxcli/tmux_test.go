@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParseClients(t *testing.T) {
@@ -105,5 +106,50 @@ func TestSwitchClientArgs(t *testing.T) {
 				t.Fatalf("error = %v, want ErrInvalidPaneID", err)
 			}
 		})
+	}
+}
+
+func TestParsePaneFocus(t *testing.T) {
+	tests := []struct {
+		out  string
+		want paneFocusInfo
+		ok   bool
+	}{
+		{out: "$1\twork\t3\t1\t1\n", want: paneFocusInfo{sessionID: "$1", location: "work:3", visible: true}, ok: true},
+		{out: "$1\twork\t3\t0\t1\n", want: paneFocusInfo{sessionID: "$1", location: "work:3"}, ok: true},
+		{out: "$1\twork\t3\t1\t0", want: paneFocusInfo{sessionID: "$1", location: "work:3"}, ok: true},
+		{out: "$1\t\t3\t1\t1"},
+		{out: "garbage"},
+		{out: ""},
+	}
+	for _, tt := range tests {
+		got, ok := parsePaneFocus(tt.out)
+		if ok != tt.ok || got != tt.want {
+			t.Errorf("parsePaneFocus(%q) = %+v, %v; want %+v, %v", tt.out, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestRecentlyActive(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	for out, want := range map[string]bool{
+		"":                 false,
+		"999000\n":         false, // 1000s ago
+		"999000\n999950\n": true,  // one client 50s ago
+		"1000000":          true,
+		"nope\n0\n-5\n":    false,
+	} {
+		if got := recentlyActive(out, now, 2*time.Minute); got != want {
+			t.Errorf("recentlyActive(%q) = %v, want %v", out, got, want)
+		}
+	}
+}
+
+func TestLookupPaneRejectsInvalidID(t *testing.T) {
+	if _, ok := LookupPane("", time.Now(), time.Minute); ok {
+		t.Fatal("empty pane id resolved")
+	}
+	if _, ok := LookupPane("work:1", time.Now(), time.Minute); ok {
+		t.Fatal("non-canonical target resolved")
 	}
 }

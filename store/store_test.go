@@ -203,3 +203,64 @@ func TestPathHonorsOverrideAndXDG(t *testing.T) {
 		t.Fatalf("override not honored: %s err=%v", p, err)
 	}
 }
+
+func TestMigrateUpgradesV1Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agents.db")
+	v1, err := OpenAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rebuild the v1 shape: drop the v2 columns and reset the version.
+	for _, stmt := range []string{
+		`DROP TABLE agent_status`,
+		`CREATE TABLE agent_status (
+			agent TEXT NOT NULL, session_id TEXT NOT NULL, cwd TEXT NOT NULL DEFAULT '',
+			pid INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL DEFAULT '',
+			latest_message TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
+			PRIMARY KEY (agent, session_id))`,
+		`INSERT INTO agent_status (agent, session_id, status, prompt, updated_at) VALUES ('claude','old','idle','kept',1)`,
+		`PRAGMA user_version = 1`,
+	} {
+		if _, err := v1.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	v1.Close()
+
+	db, err := OpenAt(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer db.Close()
+	got, found, err := db.Get("claude", "old")
+	if err != nil || !found || got.Prompt != "kept" || got.TurnPrompt != "" || got.TurnStartedAt != 0 || got.NotifiedAt != 0 {
+		t.Fatalf("migrated row = %+v, %v, %v", got, found, err)
+	}
+}
+
+func TestUpsertTurnFieldsAndMarkNotified(t *testing.T) {
+	db := openTemp(t)
+	first := mk("claude", "s", "/w", 0, Running, 10)
+	first.Prompt, first.TurnPrompt, first.TurnStartedAt = "first", "first", 10
+	second := mk("claude", "s", "/w", 0, Running, 20)
+	second.Prompt, second.TurnPrompt, second.TurnStartedAt = "second", "second", 20
+	for _, s := range []Status{first, second, mk("claude", "s", "/w", 0, Idle, 30)} {
+		if err := db.Upsert(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.MarkNotified("claude", "s", 31); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := db.Get("claude", "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Prompt != "first" || got.TurnPrompt != "second" || got.TurnStartedAt != 20 || got.NotifiedAt != 31 {
+		t.Fatalf("row = %+v; want first prompt kept, latest turn, notified at 31", got)
+	}
+	if err := db.MarkNotified("claude", "missing", 1); err != nil {
+		t.Fatalf("MarkNotified on missing row: %v", err)
+	}
+}

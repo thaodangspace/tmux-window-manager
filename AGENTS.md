@@ -77,6 +77,14 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   `Stop` hook events send a bounded Telegram Bot API request after the status
   write succeeds. Other events and Codex notify payloads are excluded. Delivery
   failures are redacted, never roll back status, and never fail the agent hook.
+- **Telegram noise filters live in the hook.** Schema v2 adds `turn_prompt` /
+  `turn_started_at` (replaced on each `UserPromptSubmit`) and `notified_at`
+  (`MarkNotified` after a delivery). The hook skips `Stop` for turns shorter
+  than `min_turn_seconds`, skips anything while `$TMUX_PANE` is the visible
+  pane of a client with input in the last 2 minutes (`tmuxcli.LookupPane`),
+  and sends Claude's `idle_prompt` reminder only when `notified_at <
+  turn_started_at`. `Stop` messages go out silently; the reply excerpt is
+  opt-in (`include_response`) because it leaves the machine.
 - **Status source of truth: `store`.** DB at
   `~/.local/state/tmux-window-manager/agents.db` (override `$TWM_DB_PATH`, honors
   `$XDG_STATE_HOME`). WAL + `busy_timeout` for concurrent short-lived hook
@@ -112,14 +120,13 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   clients narrower than 100 columns hide fzf's right-hand preview so the window
   list can use the full popup width. If tmux cannot report a width, the preview
   remains visible.
-- **Grouped fuzzy search includes preview text.** Since fzf is disabled to keep
-  session headers grouped, `list --query` performs case-insensitive subsequence
-  matching itself. It searches window/session metadata first, then lazily
-  captures the visible bodies of otherwise-unmatched panes so text shown in the
-  preview can find its window without adding that potentially large text to the
-  emitted fzf row. All fuzzy matches are constrained to individual
-  whitespace-delimited tokens to prevent characters across metadata fields, a
-  screen, or a long prose line from making unrelated windows match.
+- **Grouped search includes preview text.** Since fzf is disabled to keep
+  session headers grouped, `list --query` performs case-insensitive substring
+  matching itself. Query words must occur contiguously, so typos or characters
+  scattered through opaque IDs do not produce false positives. It searches
+  window/session metadata first, then lazily captures the visible bodies of
+  otherwise-unmatched panes so text shown in the preview can find its window
+  without adding that potentially large text to the emitted fzf row.
 - **Ctrl-N directory suggestions are Git repos only.** The new-session picker
   still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
   `$HOME` top-level children), but emits only candidates with a direct `.git`

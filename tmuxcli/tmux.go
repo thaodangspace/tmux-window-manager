@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // sep is the field separator we ask tmux to emit. Tab is safe because tmux
@@ -366,4 +367,72 @@ func nonEmptyLines(s string) []string {
 		}
 	}
 	return out
+}
+
+// PaneFocus is where a pane lives and whether a user is plausibly looking at
+// it right now.
+type PaneFocus struct {
+	Location string // session_name:window_index
+	// Watched is true when the pane is the active pane of its session's
+	// active window and a client attached to that session had input activity
+	// within the requested window.
+	Watched bool
+}
+
+// LookupPane resolves a canonical pane id (such as $TMUX_PANE) to its
+// location and focus state. ok is false when the id is invalid or tmux cannot
+// resolve it.
+func LookupPane(pane string, now time.Time, recent time.Duration) (focus PaneFocus, ok bool) {
+	if !ValidPaneID(pane) {
+		return PaneFocus{}, false
+	}
+	const format = "#{session_id}" + sep + "#{session_name}" + sep + "#{window_index}" +
+		sep + "#{window_active}" + sep + "#{pane_active}"
+	out, err := run("display-message", "-p", "-t", pane, format)
+	if err != nil {
+		return PaneFocus{}, false
+	}
+	info, ok := parsePaneFocus(out)
+	if !ok {
+		return PaneFocus{}, false
+	}
+	focus.Location = info.location
+	if info.visible {
+		clients, _ := run("list-clients", "-t", info.sessionID, "-F", "#{client_activity}")
+		focus.Watched = recentlyActive(clients, now, recent)
+	}
+	return focus, true
+}
+
+type paneFocusInfo struct {
+	sessionID string
+	location  string
+	visible   bool // active pane of the session's active window
+}
+
+func parsePaneFocus(out string) (paneFocusInfo, bool) {
+	fields := strings.Split(strings.TrimRight(out, "\n"), sep)
+	if len(fields) != 5 || fields[0] == "" || fields[1] == "" || fields[2] == "" {
+		return paneFocusInfo{}, false
+	}
+	return paneFocusInfo{
+		sessionID: fields[0],
+		location:  fields[1] + ":" + fields[2],
+		visible:   fields[3] == "1" && fields[4] == "1",
+	}, true
+}
+
+// recentlyActive reports whether any client_activity timestamp (one per line,
+// unix seconds) falls within recent of now.
+func recentlyActive(out string, now time.Time, recent time.Duration) bool {
+	for _, line := range nonEmptyLines(out) {
+		activity, err := strconv.ParseInt(line, 10, 64)
+		if err != nil || activity <= 0 {
+			continue
+		}
+		if now.Sub(time.Unix(activity, 0)) <= recent {
+			return true
+		}
+	}
+	return false
 }

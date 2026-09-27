@@ -13,6 +13,7 @@ import (
 	"github.com/thaodangspace/tmux-window-manager/agents"
 	"github.com/thaodangspace/tmux-window-manager/notify"
 	"github.com/thaodangspace/tmux-window-manager/store"
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 // newHookCommand handles a single agent lifecycle event: it reads the vendor
@@ -53,18 +54,30 @@ func runHook(agentName, event string, codex bool, raw []byte) {
 }
 
 type hookNotifier interface {
-	Send(context.Context, string) error
+	Send(ctx context.Context, text string, silent bool) error
 }
 
-type hookNotifierFactory func() (hookNotifier, bool, error)
+type hookNotifierFactory func() (hookNotifier, notify.Options, bool, error)
 
-func telegramNotifierFromConfig() (hookNotifier, bool, error) {
+func telegramNotifierFromConfig() (hookNotifier, notify.Options, bool, error) {
 	cfg, enabled, err := notify.LoadConfig()
 	if err != nil || !enabled {
-		return nil, enabled, err
+		return nil, notify.Options{}, enabled, err
 	}
-	return notify.NewTelegram(cfg), true, nil
+	return notify.NewTelegram(cfg), cfg.Options, true, nil
 }
+
+// focusRecent is how recently a tmux client must have had input for a visible
+// agent pane to count as watched.
+const focusRecent = 2 * time.Minute
+
+// Test seams for the hook's view of time and of tmux.
+var (
+	hookNow        = time.Now
+	hookLookupPane = func(pane string) (tmuxcli.PaneFocus, bool) {
+		return tmuxcli.LookupPane(pane, hookNow(), focusRecent)
+	}
+)
 
 func runHookWithNotifier(agentName, event string, codex bool, raw []byte, notifierFactory hookNotifierFactory) {
 	var (
@@ -113,6 +126,7 @@ func runHookWithNotifier(agentName, event string, codex bool, raw []byte, notifi
 		return
 	}
 
+	now := hookNow().UnixMilli()
 	s := store.Status{
 		Agent:     h.Agent,
 		SessionID: h.SessionID,
@@ -123,68 +137,122 @@ func runHookWithNotifier(agentName, event string, codex bool, raw []byte, notifi
 		Model:     h.Model,
 		Prompt:    h.Prompt,
 		Latest:    h.Latest,
-		UpdatedAt: time.Now().UnixMilli(),
+		UpdatedAt: now,
 		Event:     h.Event,
+	}
+	if h.Event == "UserPromptSubmit" {
+		s.TurnPrompt = h.Prompt
+		s.TurnStartedAt = now
 	}
 	if err := db.Upsert(s); err != nil {
 		debugf("hook: upsert: %v", err)
 		return
 	}
 
-	// Notification payloads do not repeat the user's prompt. Read the merged row
-	// back so the message includes the first prompt retained by the store.
-	if h.Event == "Notification" || h.Event == "Stop" {
-		persisted, found, err := db.Get(h.Agent, h.SessionID)
-		if err != nil {
-			debugf("hook: read notification context: %v", err)
-		} else if found {
-			h.Prompt = persisted.Prompt
-		}
-	}
-	sendHookNotification(h, codex, notifierFactory)
-}
-
-// sendHookNotification sends only user-attention and completed-turn events.
-// Delivery is best effort and always happens after the status write succeeds.
-func sendHookNotification(h agents.Hook, codex bool, notifierFactory hookNotifierFactory) {
 	if codex || (h.Event != "Notification" && h.Event != "Stop") {
 		return
 	}
+	// Notification payloads do not repeat the user's prompt, and turn timing
+	// lives only in the store. Read the merged row back for that context.
+	persisted, found, err := db.Get(h.Agent, h.SessionID)
+	if err != nil || !found {
+		debugf("hook: read notification context: found=%v err=%v", found, err)
+		return
+	}
+	if sendHookNotification(h, persisted, notifierFactory) {
+		if err := db.MarkNotified(h.Agent, h.SessionID, hookNow().UnixMilli()); err != nil {
+			debugf("hook: mark notified: %v", err)
+		}
+	}
+}
+
+// sendHookNotification sends user-attention and completed-turn events for
+// Claude-style hooks, applying the user's noise filters. Delivery is best
+// effort, happens after the status write, and reports whether a message was
+// delivered.
+func sendHookNotification(h agents.Hook, row store.Status, notifierFactory hookNotifierFactory) (sent bool) {
 	defer func() {
 		if recover() != nil {
 			debugf("hook: telegram delivery failed (panic)")
+			sent = false
 		}
 	}()
 	if notifierFactory == nil {
-		return
+		return false
 	}
-	sender, enabled, err := notifierFactory()
+	sender, opts, enabled, err := notifierFactory()
 	if err != nil {
 		debugf("hook: telegram configuration failed (%s)", telegramErrorCategory(err))
-		return
+		return false
 	}
 	if !enabled || sender == nil {
-		return
+		return false
 	}
 
-	kind := notify.Waiting
-	if h.Event == "Stop" {
-		kind = notify.Completed
+	now := hookNow()
+	var turn time.Duration
+	if row.TurnStartedAt > 0 {
+		turn = now.Sub(time.UnixMilli(row.TurnStartedAt))
 	}
-	message := notify.Compose(notify.Event{
-		Kind:      kind,
+	if reason := suppressReason(h, row, opts, turn); reason != "" {
+		debugf("hook: telegram skipped (%s)", reason)
+		return false
+	}
+	pane, _ := hookLookupPane(os.Getenv("TMUX_PANE"))
+	if opts.SkipWhenFocused && pane.Watched {
+		debugf("hook: telegram skipped (pane is focused)")
+		return false
+	}
+
+	prompt := row.TurnPrompt
+	if prompt == "" {
+		prompt = row.Prompt
+	}
+	event := notify.Event{
 		Agent:     h.Agent,
 		Cwd:       h.Cwd,
 		SessionID: h.SessionID,
-		Prompt:    h.Prompt,
-		Detail:    h.Detail,
-	})
+		Location:  pane.Location,
+		Model:     row.Model,
+		Prompt:    prompt,
+	}
+	if h.Event == "Stop" {
+		event.Kind = notify.Completed
+		event.Duration = turn
+		if opts.IncludeResponse {
+			event.Response = row.Latest
+		}
+	} else {
+		event.Kind = notify.Waiting
+		event.Detail = h.Detail
+	}
+	message := notify.Compose(event)
 	if message == "" {
-		return
+		return false
 	}
-	if err := sender.Send(context.Background(), message); err != nil {
+	// Only a blocked agent should buzz the phone; a finished turn arrives quietly.
+	if err := sender.Send(context.Background(), message, event.Kind == notify.Completed); err != nil {
 		debugf("hook: telegram delivery failed (%s)", telegramErrorCategory(err))
+		return false
 	}
+	return true
+}
+
+// suppressReason returns why an event should not be delivered, or "" to send.
+//   - A Stop for a turn shorter than Options.MinTurn is noise: the user was
+//     most likely still at the keyboard.
+//   - Claude's idle reminder repeats the preceding Stop, so it is sent only
+//     when nothing was delivered for the current turn (e.g. the Stop was
+//     suppressed as short and the user has since walked away).
+func suppressReason(h agents.Hook, row store.Status, opts notify.Options, turn time.Duration) string {
+	switch {
+	case h.Event == "Stop" && opts.MinTurn > 0 && row.TurnStartedAt > 0 && turn < opts.MinTurn:
+		return "short turn"
+	case h.Event == "Notification" && h.IsIdlePrompt() &&
+		(row.TurnStartedAt == 0 || row.NotifiedAt >= row.TurnStartedAt):
+		return "idle reminder already covered"
+	}
+	return ""
 }
 
 // telegramErrorCategory deliberately drops the original error text because it

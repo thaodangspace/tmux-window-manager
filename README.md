@@ -149,6 +149,9 @@ chat_id = "<chat-id>"
 TWM sends only `Notification` (needs input) and `Stop` (turn finished) events.
 Delivery is best effort and never fails the agent hook. Environment variables
 `TWM_TELEGRAM_BOT_TOKEN` and `TWM_TELEGRAM_CHAT_ID` can override the file.
+Messages show the tmux `session:window`, model, current prompt, and turn
+duration. Short turns and panes you are watching are skipped by default;
+`include_response`, `min_turn_seconds`, and `skip_when_focused` tune this.
 See the [Telegram guide](docs/src/content/docs/telegram.md) for details.
 
 ## Notes
