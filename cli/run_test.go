@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -26,24 +27,30 @@ func TestResolvePath(t *testing.T) {
 }
 
 func TestKillSessionCommand(t *testing.T) {
+	sessions := []string{"alpha", "beta", "gamma"}
 	tests := []struct {
-		name   string
-		target string
-		want   []string
+		name, client, target, current, last string
+		sessions                            []string
+		want                                []string
+		ok                                  bool
 	}{
-		{"session header", "alpha", []string{"kill-session", "-t", "alpha"}},
-		{"window row", "beta:2", []string{"kill-session", "-t", "beta"}},
+		{name: "other session header", client: "/dev/ttys3", target: "beta", current: "alpha", sessions: sessions,
+			want: []string{"kill-session", "-t", "=beta"}, ok: true},
+		{name: "other session window row", client: "/dev/ttys3", target: "beta:2", current: "alpha", sessions: sessions,
+			want: []string{"kill-session", "-t", "=beta"}, ok: true},
+		{name: "current session switches to last first", client: "/dev/ttys3", target: "beta:1", current: "beta", last: "gamma", sessions: sessions,
+			want: []string{"switch-client", "-c", "/dev/ttys3", "-t", "=gamma", ";", "kill-session", "-t", "=beta"}, ok: true},
+		{name: "current session without last uses first other", target: "beta", current: "beta", sessions: sessions,
+			want: []string{"switch-client", "-t", "=alpha", ";", "kill-session", "-t", "=beta"}, ok: true},
+		{name: "stale last session ignored", client: "c", target: "beta", current: "beta", last: "gone", sessions: sessions,
+			want: []string{"switch-client", "-c", "c", "-t", "=alpha", ";", "kill-session", "-t", "=beta"}, ok: true},
+		{name: "last remaining session refused", client: "c", target: "alpha:0", current: "alpha", sessions: []string{"alpha"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := killSessionCommand(tt.target)
-			if len(got) != len(tt.want) {
-				t.Fatalf("got %v, want %v", got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Fatalf("arg %d: got %q want %q\nfull: %v", i, got[i], tt.want[i], got)
-				}
+			got, ok := killSessionCommand(tt.client, tt.target, tt.current, tt.last, tt.sessions)
+			if ok != tt.ok || !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %v, %v; want %v, %v", got, ok, tt.want, tt.ok)
 			}
 		})
 	}

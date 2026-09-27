@@ -9,7 +9,6 @@
 //	list          emit the window list rows (fzf input)
 //	preview       render a window's panes (fzf --preview)
 //	label         print a pane's agent name for the status bar
-//	open-editor   open Zed/Typora on a window's current path
 //	hook          record an agent lifecycle event (called from Claude/Codex)
 //	install-hooks wire the status hooks into Claude Code and Codex
 //	status        dump the live agent status rows (debug)
@@ -69,7 +68,6 @@ func newRootCommand() *cobra.Command {
 		newListCommand(),
 		newPreviewCommand(),
 		newLabelCommand(),
-		newOpenEditorCommand(),
 		newHookCommand(),
 		newInstallHooksCommand(),
 		newStatusCommand(),

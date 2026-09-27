@@ -325,6 +325,26 @@ func DisplayMessage(target, format string) string {
 	return strings.TrimRight(out, "\n")
 }
 
+// ClientSessions reports the session the client is attached to and the one it
+// was attached to before (client_last_session). An empty client means the
+// current client. Missing values come back as "".
+func ClientSessions(client string) (current, last string) {
+	args := []string{"display-message", "-p"}
+	if client != "" {
+		args = append(args, "-c", client)
+	}
+	args = append(args, "#{client_session}\t#{client_last_session}")
+	out, _ := run(args...)
+	current, last, _ = strings.Cut(strings.TrimRight(out, "\n"), "\t")
+	return current, last
+}
+
+// ListSessions returns every session name.
+func ListSessions() []string {
+	out, _ := run("list-sessions", "-F", "#{session_name}")
+	return nonEmptyLines(out)
+}
+
 // HasSession reports whether a session with the given name exists.
 func HasSession(name string) bool {
 	_, err := run("has-session", "-t", name)

@@ -23,7 +23,7 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	opts := WindowFzfOptions(self, 160)
 	joined := strings.Join(opts, "\x00")
 
-	// The self path must appear shell-quoted in preview/reload/editor binds.
+	// The self path must appear shell-quoted in preview/reload binds.
 	q := ShellQuote(self)
 	for _, want := range []string{
 		"--preview=" + q + " preview {1}",
@@ -41,8 +41,10 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	if !strings.Contains(joined, "--expect=ctrl-n,ctrl-x") || !strings.Contains(joined, "--print-query") {
 		t.Errorf("options missing expect/print-query: %v", opts)
 	}
-	if !strings.Contains(joined, "Ctrl-X: Close") {
-		t.Errorf("options missing close-session help: %v", opts)
+	for _, removed := range []string{"ctrl-z", "ctrl-t", "open-editor", "Close", "Zed", "Typora"} {
+		if strings.Contains(joined, removed) {
+			t.Errorf("options should not contain removed hotkey feature %q: %v", removed, opts)
+		}
 	}
 }
 

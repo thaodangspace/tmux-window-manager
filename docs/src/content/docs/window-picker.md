@@ -16,8 +16,7 @@ searchable even when they are not all displayed.
 | `Enter` | Switch the launching tmux client to the selected session or window |
 | `Ctrl-R` | Reload rows and read the latest status database state |
 | `Ctrl-N` | Pick or type a directory, then create or attach to a session |
-| `Ctrl-Z` | Open Zed in the selected window's current directory |
-| `Ctrl-T` | Open Typora in the selected window's current directory |
+| `Ctrl-X` | Kill the selected row's session; if it is your current session you are switched to another one first, and the last session is never killed |
 | `Esc` / `Ctrl-C` | Cancel without switching |
 
 The preview shows stacked panes for the highlighted window and labels recognized

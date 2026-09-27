@@ -31,7 +31,9 @@ script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
   Claude transcripts (`~/.claude/projects/**/*.jsonl`) and the Codex notify
   payload.
 - **Ctrl-N** — create/attach a session in a directory you pick or type.
-- **Ctrl-Z / Ctrl-T** — open Zed / Typora on the highlighted window's directory.
+- **Ctrl-X** — kill the highlighted row's session (if it is the one you are
+  attached to, you are moved to another session first; the last session is
+  never killed).
 - **Ctrl-R** — reload the list (re-reads the latest status).
 - **Status-bar label** — `tmux-window-manager label <pid> <fallback>` prints a
   pane's agent name for `window-status-format`.
@@ -109,7 +111,6 @@ The binary re-invokes itself for its internal modes; you normally only bind
 | `list` | Emit the window rows fzf consumes |
 | `preview <target>` | Render a window's panes |
 | `label <pid> [fallback]` | Print a pane's agent name (status bar) |
-| `open-editor <zed\|typora> <target>` | Open an editor on a window's path |
 | `install-hooks [--claude] [--codex] [--dry-run]` | Wire status hooks into Claude Code / Codex |
 | `hook [event]` | Record an agent lifecycle event (called from Claude/Codex hooks) |
 | `status [--all]` | Dump the recorded agent status rows (debug) |

@@ -21,7 +21,6 @@ for troubleshooting and integrations but normally should not be called by hand:
 | `popup [client]` | Run fzf inside the tmux popup and write its selection handoff |
 | `preview <target>` | Render pane previews for an fzf target |
 | `label <pid> [fallback]` | Resolve the nearest coding-agent process name for a status-bar label |
-| `open-editor <zed\|typora> <target>` | Open the target window's current directory |
 | `hook [event] [--agent NAME] [--codex]` | Normalize and record an agent lifecycle payload |
 
 Use `tmux-window-manager <command> --help` for current argument and flag details.

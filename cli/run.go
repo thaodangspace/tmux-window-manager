@@ -74,22 +74,58 @@ func runOuter(client string) error {
 		return nil
 	}
 	if key == "ctrl-x" {
-		return killSession(target)
+		return killSession(client, target)
 	}
 	return switchTo(client, target)
 }
 
-// killSession kills the session represented by a session header or window row.
-func killSession(target string) error {
-	return tmuxcli.Command(killSessionCommand(target)...)
+// killSession kills the session containing the selected row. Killing the
+// session the client is attached to would detach the client (tmux's default
+// detach-on-destroy), so the client is moved to another session first. The
+// last remaining session is never killed.
+func killSession(client, target string) error {
+	current, last := tmuxcli.ClientSessions(client)
+	args, ok := killSessionCommand(client, target, current, last, tmuxcli.ListSessions())
+	if !ok {
+		return tmuxcli.Command("display-message", "twm: refusing to kill the last tmux session")
+	}
+	return tmuxcli.Command(args...)
 }
 
 // killSessionCommand builds the tmux argv that kills the selected row's
-// containing session. Window targets use "session:index"; header targets are
-// already plain session names.
-func killSessionCommand(target string) []string {
+// session. Window targets are "session:index"; header targets are plain
+// session names. When the session is the client's current one, a switch to
+// fallback (the client's last session, else the first other session) is
+// prepended in the same tmux invocation. ok is false when no other session
+// exists. Names are "="-prefixed so tmux matches them exactly, not by prefix.
+func killSessionCommand(client, target, current, last string, sessions []string) (args []string, ok bool) {
 	session, _, _ := strings.Cut(target, ":")
-	return []string{"kill-session", "-t", session}
+	kill := []string{"kill-session", "-t", "=" + session}
+	if session != current {
+		return kill, true
+	}
+	fallback := ""
+	for _, s := range sessions {
+		if s == session {
+			continue
+		}
+		if s == last {
+			fallback = s
+			break
+		}
+		if fallback == "" {
+			fallback = s
+		}
+	}
+	if fallback == "" {
+		return nil, false
+	}
+	args = []string{"switch-client"}
+	if client != "" {
+		args = append(args, "-c", client)
+	}
+	args = append(args, "-t", "="+fallback, ";")
+	return append(args, kill...), true
 }
 
 // switchTo switches the launching client to the selected target.

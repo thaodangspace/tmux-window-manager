@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// commonBinDirs are prepended to PATH so the tools we shell out to (fzf, tmux,
-// zed/typora, open) are found even when launched from tmux's run-shell, which
-// provides a minimal environment. This mirrors the original script's explicit
+// commonBinDirs are prepended to PATH so the tools we shell out to (fzf and
+// tmux) are found even when launched from tmux's run-shell, which provides a
+// minimal environment. This mirrors the original script's explicit
 // `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`.
 var commonBinDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 

@@ -23,7 +23,6 @@ cli/                              cobra command tree (one file per subcommand)
   list.go      emit fzf rows (live enricher reads the status DB)
   preview.go   fzf preview
   label.go     status-bar agent name (process detection)
-  openeditor.go Zed/Typora launch
   hook.go      record an agent lifecycle event -> status DB (always exits 0)
   installhooks.go  merge hooks into ~/.claude/settings.json + Codex snippet
   status.go    debug dump of the status rows
@@ -56,7 +55,7 @@ tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm
 
 | Subcommand | Purpose |
 |------------|---------|
-| `run` / `popup` / `list` / `preview` / `label` / `open-editor` | the picker UI (ports of the original script modes) |
+| `run` / `popup` / `list` / `preview` / `label` | the picker UI (ports of the original script modes) |
 | `hook [event] [--agent] [--codex]` | record one lifecycle event |
 | `install-hooks [--claude] [--codex] [--dry-run]` | wire the hooks into Claude/Codex config |
 | `status [--all]` | debug dump of the status rows |
@@ -89,8 +88,14 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   is undone when the popup closes, so the popup writes the selection + fzf exit
   code to `$TMPDIR/tmux_wm_{sel,err}_<client>.txt` and the outer `run` acts after
   the popup closes. Enter switches targets, Ctrl-N creates a session, and Ctrl-X
-  immediately kills the session represented by either a header or window row.
-  Client `/` is sanitized to `_` in the filename.
+  kills the session of the selected header/window row. Client `/` is sanitized
+  to `_` in the filename.
+- **Ctrl-X never detaches the client.** With tmux's default
+  `detach-on-destroy on`, killing the attached session would drop the user out
+  of tmux, so when the target is the client's current session `run` prepends a
+  `switch-client` to the client's last session (else the first other session)
+  in the same tmux invocation. The last remaining session is refused. Session
+  targets are `=`-prefixed for exact (not prefix) matching.
 - **Picker row display mirrors the tmux status panel.** Session headers remain
   the group label; window rows keep `session:index`, raw `window_name`, command,
   path, and model-enriched agent labels only as hidden fzf target/search terms.
@@ -106,7 +111,7 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   `$HOME` top-level children), but emits only candidates with a direct `.git`
   entry. Manually typed paths are still accepted/created by `newSession`.
 - **PATH priming.** `run-shell` gives a minimal env, so `cli.Execute` prepends
-  `/opt/homebrew/bin` and `/usr/local/bin` before any `fzf`/editor exec.
+  `/opt/homebrew/bin` and `/usr/local/bin` before any `fzf`/tmux exec.
 - **Build-on-install.** `tmux-window-manager.tmux` rebuilds when the binary is
   missing or older than any `.go` file, and publishes the binary path as the
   `@twm_bin` tmux option so status-bar formats can call it.
@@ -134,9 +139,9 @@ ancestor walk, the transcript tail reader and parse helpers, hook payload
 normalization (Claude + Codex), the `store` layer (upsert/conflict-merge,
 `LiveByCwd` pid-liveness + reap, concurrency), the picker enricher + status glyphs,
 `install-hooks` idempotent merge, directory lister, fzf option assembly, switch
-command building, and PATH priming. The interactive popup/fzf path and the
-end-to-end hook → DB → badge flow are verified manually in a real tmux session
-(see the smoke tests in the PR).
+command building, and PATH priming. The interactive popup/fzf
+path and the end-to-end hook → DB → badge flow are verified manually in a real
+tmux session (see the smoke tests in the PR).
 
 Documentation verification uses `npm --prefix docs ci`,
 `npm --prefix docs run build`, and `npm audit --prefix docs --omit=dev`.

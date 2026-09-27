@@ -23,8 +23,8 @@ func ShellQuote(s string) string {
 const MinPreviewClientWidth = 100
 
 // WindowFzfOptions builds the fzf arguments for the main window picker. self is
-// the path to this binary (os.Executable), embedded into the preview/reload/
-// editor bindings so fzf re-invokes the right subcommands. A non-positive
+// the path to this binary (os.Executable), embedded into the preview/reload
+// bindings so fzf re-invokes the right subcommands. A non-positive
 // clientWidth means the size could not be detected, so the preview remains
 // visible for backwards-compatible behavior.
 func WindowFzfOptions(self string, clientWidth int) []string {
@@ -39,12 +39,10 @@ func WindowFzfOptions(self string, clientWidth int) []string {
 		"--delimiter=\t", "--with-nth=2",
 		"--preview=" + q + " preview {1}",
 		"--preview-window=" + previewWindow,
-		"--bind=ctrl-z:execute-silent(" + q + " open-editor zed {1})+abort," +
-			"ctrl-t:execute-silent(" + q + " open-editor typora {1})+abort",
 		"--bind=change:reload-sync(" + q + " list --query {q})",
 		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
 		"--border",
-		"--header=Enter: switch | Ctrl-X: Close | Ctrl-N: New | Ctrl-Z: Zed | Ctrl-T: Typora",
+		"--header=Enter: switch | Ctrl-N: New | Ctrl-X: Kill session",
 		"--print-query", "--expect=ctrl-n,ctrl-x",
 	}
 }
