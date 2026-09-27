@@ -125,7 +125,7 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   the group label; window rows keep `session:index`, raw `window_name`, command,
   path, and model-enriched agent labels only as hidden fzf target/search terms.
   The visible row mirrors the status bar data as
-  `🤖 basename(pane_current_path)(git_branch)[label]`, where the robot and branch
+  `🤖 basename(pane_current_path)(git_branch)/label`, where the robot and branch
   are optional and `label` is the detected agent name or `pane_current_command`
   fallback, followed by optional ` - status`.
 - **Responsive preview.** The popup checks the launching tmux client's width;

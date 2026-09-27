@@ -182,9 +182,9 @@ func statusPanelName(w tmuxcli.Window, wb WindowBadge, branch string) string {
 		return base
 	}
 	if base == "" {
-		return "[" + label + "]"
+		return label
 	}
-	return base + "[" + label + "]"
+	return base + "/" + label
 }
 
 func writeHeader(b *strings.Builder, session, search string) {

@@ -110,9 +110,9 @@ func TestBuildPlainWindows(t *testing.T) {
 	if strings.Contains(lines[2], "●") {
 		t.Errorf("idle window row should not have a dot: %q", lines[2])
 	}
-	// Window rows mirror the tmux status-panel label: basename(cwd)[label].
+	// Window rows mirror the tmux status-panel label: basename(cwd)/label.
 	display := displayField(lines[1])
-	if !strings.Contains(display, "app[nvim]") {
+	if !strings.Contains(display, "app/nvim") {
 		t.Errorf("window row missing status-panel label: %q", lines[1])
 	}
 	if strings.Contains(display, "work:1") || strings.Contains(display, "editor") {
@@ -143,7 +143,7 @@ func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.
 		t.Errorf("header = %q/%q, want session name \"cli\"", target, display)
 	}
 
-	// Row 1: target is cli:1. Display shows basename(cwd)[label] and never
+	// Row 1: target is cli:1. Display shows basename(cwd)/label and never
 	// includes the full cwd, raw window name, or visible session:index context.
 	if tgt := strings.SplitN(lines[1], "\t", 2)[0]; tgt != "cli:1" {
 		t.Errorf("row 1 target = %q, want \"cli:1\"", tgt)
@@ -172,7 +172,7 @@ func TestBuildWindowDisplayShowsStatusPanelLabelWithoutWindowContext(t *testing.
 	if strings.Contains(display2, "/Users/dt/code") {
 		t.Errorf("row 2 visible display should not include full current dir: %q", lines[2])
 	}
-	if !strings.Contains(display2, "chatgpt-cli[zsh]") {
+	if !strings.Contains(display2, "chatgpt-cli/zsh") {
 		t.Errorf("row 2 display should include status-panel label: %q", lines[2])
 	}
 	if strings.Contains(display2, "shell") || strings.Contains(display2, "cli:3") || strings.Contains(display2, "/Users/dt/code") {
@@ -399,7 +399,7 @@ func TestBuildGitBranchInDisplayAndSearch(t *testing.T) {
 	}
 
 	display := displayField(lines[1])
-	wantDisplay := filepath.Base(dir) + "(feat/branch-test)[nvim]"
+	wantDisplay := filepath.Base(dir) + "(feat/branch-test)/nvim"
 	if !strings.Contains(display, wantDisplay) {
 		t.Errorf("display %q should contain %q", display, wantDisplay)
 	}
