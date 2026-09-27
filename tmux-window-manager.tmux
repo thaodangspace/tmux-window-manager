@@ -38,6 +38,11 @@ fi
 # it without hardcoding the plugin location: #(#{@twm_bin} label ...).
 tmux set-option -g @twm_bin "$BIN"
 
+# Register the sidebar hooks and dock the sidebar in every window. install is a
+# no-op teardown when the sidebar is disabled and idempotent on re-source, so it
+# is safe to run unconditionally; failures never break plugin load.
+"$BIN" sidebar install >/dev/null 2>&1 || true
+
 KEY="$(tmux show-option -gqv @twm_key)"
 [ -n "$KEY" ] || KEY="w"
 tmux bind-key "$KEY" run-shell -b "$BIN run '#{client_name}'"

@@ -6,14 +6,9 @@ package agents
 
 import (
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 )
-
-// agentRe matches the process basenames we treat as coding agents. The set is
-// identical to the original script's `^(claude|codex|pi)$`.
-var agentRe = regexp.MustCompile(`^(claude|codex|pi)$`)
 
 // proc is one row of the process snapshot, kept in `ps` output order so agent
 // names are reported in a stable, reproducible sequence.
@@ -78,7 +73,7 @@ func (d *Detector) Names(rootPIDs ...string) []string {
 	var out []string
 	seen := make(map[string]bool)
 	for _, p := range d.order {
-		if want[p.pid] && agentRe.MatchString(p.name) && !seen[p.name] {
+		if want[p.pid] && IsAgent(p.name) && !seen[p.name] {
 			seen[p.name] = true
 			out = append(out, p.name)
 		}
@@ -100,13 +95,153 @@ func (d *Detector) AgentPIDs(rootPIDs ...string) []int {
 
 	var out []int
 	for _, p := range d.order {
-		if want[p.pid] && agentRe.MatchString(p.name) {
+		if want[p.pid] && IsAgent(p.name) {
 			if pid, err := strconv.Atoi(p.pid); err == nil {
 				out = append(out, pid)
 			}
 		}
 	}
 	return out
+}
+
+// AgentProc identifies one agent process found in a subtree: its pid, its agent
+// id (process basename), and whether it is the outermost agent of its nested
+// chain — that is, whether it has no agent ancestor within the queried subtree.
+type AgentProc struct {
+	PID   int
+	ID    string
+	Outer bool
+}
+
+// Agents returns every agent process in the subtree(s) rooted at rootPIDs (the
+// roots included), in ps output order, tagging each with whether it is the
+// outermost agent of its nested chain. A nested agent (e.g. codex launched by
+// claude) is reported with Outer=false while its enclosing claude is Outer=true;
+// sibling agents are each Outer=true. It reuses the same subtree marking as
+// Names/AgentPIDs plus the byPID index, adding only a cheap bounded ancestor walk
+// per agent rather than a second tree walk.
+func (d *Detector) Agents(rootPIDs ...string) []AgentProc {
+	if len(rootPIDs) == 0 || len(d.order) == 0 {
+		return nil
+	}
+	want := d.descendants(rootPIDs)
+	index := d.byPID()
+
+	var out []AgentProc
+	for _, p := range d.order {
+		if !want[p.pid] || !IsAgent(p.name) {
+			continue
+		}
+		pid, err := strconv.Atoi(p.pid)
+		if err != nil {
+			continue
+		}
+		out = append(out, AgentProc{
+			PID:   pid,
+			ID:    p.name,
+			Outer: !d.hasAgentAncestor(p, want, index),
+		})
+	}
+	return out
+}
+
+// AgentGroup is one outermost agent together with every agent pid in its nested
+// chain (the outer agent's own pid included), all within the queried subtree. It
+// exists so a caller can join a status row that a hook attributed to a nested
+// (inner) agent back to the outer agent shown to the user: the hook handler
+// resolves an event to the *nearest* agent (see NearestAgent), so a codex
+// launched by claude records status under codex's inner pid even though the panel
+// row is the outer claude.
+type AgentGroup struct {
+	PID     int    // outermost agent's pid
+	ID      string // outermost agent's basename
+	Members []int  // every agent pid in the chain (PID included), in ps order
+}
+
+// AgentGroups returns the agent processes in the subtree(s) rooted at rootPIDs
+// grouped by their outermost agent, in ps output order (outer agents ordered by
+// first appearance). Each group's Members lists the outer agent and every nested
+// agent below it, so a status row keyed by any inner pid can be matched to the
+// outer row. It reuses the same subtree marking and byPID index as Agents, with
+// only the bounded per-agent ancestor walk, not a second tree walk.
+func (d *Detector) AgentGroups(rootPIDs ...string) []AgentGroup {
+	if len(rootPIDs) == 0 || len(d.order) == 0 {
+		return nil
+	}
+	want := d.descendants(rootPIDs)
+	index := d.byPID()
+
+	var order []int
+	groups := make(map[int]*AgentGroup)
+	for _, p := range d.order {
+		if !want[p.pid] || !IsAgent(p.name) {
+			continue
+		}
+		pid, err := strconv.Atoi(p.pid)
+		if err != nil {
+			continue
+		}
+		outer := d.outerAgent(p, want, index)
+		opid, err := strconv.Atoi(outer.pid)
+		if err != nil {
+			continue
+		}
+		g, ok := groups[opid]
+		if !ok {
+			g = &AgentGroup{PID: opid, ID: outer.name}
+			groups[opid] = g
+			order = append(order, opid)
+		}
+		g.Members = append(g.Members, pid)
+	}
+
+	if len(order) == 0 {
+		return nil
+	}
+	out := make([]AgentGroup, 0, len(order))
+	for _, opid := range order {
+		out = append(out, *groups[opid])
+	}
+	return out
+}
+
+// outerAgent returns the outermost agent process at or above p within the queried
+// subtree (want): the highest agent ancestor, or p itself when p has no agent
+// ancestor. The walk mirrors hasAgentAncestor but keeps climbing to find the top.
+func (d *Detector) outerAgent(p proc, want map[string]bool, index map[string]proc) proc {
+	outer := p
+	seen := map[string]bool{p.pid: true}
+	for cur := p.ppid; cur != "" && cur != "0" && want[cur] && !seen[cur]; {
+		seen[cur] = true
+		anc, ok := index[cur]
+		if !ok {
+			break
+		}
+		if IsAgent(anc.name) {
+			outer = anc
+		}
+		cur = anc.ppid
+	}
+	return outer
+}
+
+// hasAgentAncestor reports whether p has an agent process among its ancestors
+// within the queried subtree (want), walking up via the pid index. The walk stops
+// at the subtree root so agents living above the queried pane do not count.
+func (d *Detector) hasAgentAncestor(p proc, want map[string]bool, index map[string]proc) bool {
+	seen := map[string]bool{p.pid: true}
+	for cur := p.ppid; cur != "" && cur != "0" && want[cur] && !seen[cur]; {
+		seen[cur] = true
+		anc, ok := index[cur]
+		if !ok {
+			break
+		}
+		if IsAgent(anc.name) {
+			return true
+		}
+		cur = anc.ppid
+	}
+	return false
 }
 
 // descendants returns the set of pids in the subtree(s) rooted at rootPIDs (the
@@ -160,7 +295,7 @@ func (d *Detector) NearestAgent(startPID string) (int, string) {
 		if !ok {
 			break
 		}
-		if agentRe.MatchString(p.name) {
+		if IsAgent(p.name) {
 			pid, _ := strconv.Atoi(p.pid)
 			return pid, p.name
 		}

@@ -26,16 +26,26 @@ cli/                              cobra command tree (one file per subcommand)
   hook.go      record an agent lifecycle event -> status DB (always exits 0)
   installhooks.go  merge hooks into ~/.claude/settings.json + Codex snippet
   status.go    debug dump of the status rows
+  sidebar.go   sidebar command group: ensure/install/uninstall/enable/disable/toggle
+               + index-90 hook table, geometry guard, focus bounce, wake
+  sidebar_render.go  hidden `sidebar render`: the in-pane render loop entrypoint
 tmuxcli/    typed wrappers over the tmux CLI (one ps/tmux call shape per func)
+  sidebar.go     sidebar pane detection/split/kill/resize + hook set/unset;
+                 id-validated, paired pure ...Args builders, NotSidebarFilter
 agents/     agent detection + hook payload normalization
+  registry.go    Kind{ID,Display} registry (claude/codex/pi) + IsAgent/DisplayName
   proc.go        process-subtree walk -> agent names (port of the awk);
-                 NearestAgent() ancestor walk for hook pid resolution
+                 NearestAgent() ancestor walk for hook pid resolution;
+                 Agents()/AgentGroups() outermost-agent-per-chain (sidebar)
   transcript.go  Claude .jsonl tail reader (model/latest) + parse helpers
   hookpayload.go normalize Claude (stdin) / Codex (notify) payloads -> status
 store/      SQLite status persistence (the event-driven status source)
   path.go        canonical DB path ($TWM_DB_PATH / $XDG_STATE_HOME / ~/.local/state)
   store.go       schema, Upsert/Get/Delete, LiveByCwd (pid-liveness + lazy reap)
+  version.go     DataVersion() (PRAGMA data_version) for the sidebar change-skip
   alive.go       kill(pid,0) liveness (unix)
+config/     twm.toml [sidebar] loader: defaults, clamps, runtime>file precedence
+  sidebar.go     Load/LoadFrom/Path/ResolveEnabled; decodes only [sidebar]
 notify/     optional Telegram config, safe message composition, and HTTP delivery
 picker/     list row building + fzf invocation
   build.go     rows; Enricher iface; visible status-panel-label/bot/status format
@@ -43,6 +53,14 @@ picker/     list row building + fzf invocation
   color.go     ANSI palette (robot icon + running/waiting status text)
   fzf.go       fzf option assembly, ShellQuote, selection temp-file paths
 dirs/       native Git-repo directory lister for Ctrl-N (replaces fd)
+  list.go        GitRoot(path): nearest ancestor with .git, stops before $HOME
+sidebar/    the persistent agents panel: pure pieces + the render loop
+  collect.go     Collect(): panes + ps + live DB rows -> grouped Snapshot
+  render.go      Render()/Frame(): Snapshot -> width/height-bounded ANSI lines
+  sanitize.go    Sanitize(): strip C0/C1/ESC/DEL before any external text renders
+  ensure.go      Decide(): pure geometry/lifecycle -> Create/Kill/Resize/... actions
+  lock_unix.go   Lock(): $TMPDIR flock (O_NOFOLLOW, 0600) serializing ensure
+  loop.go        Loop(): tick/visibility/signals, diffed frame writes
 preview/    preview rendering (stacked panes; pane-names via process detection)
 docs/       isolated Astro/Starlight static documentation site
   src/content/docs/ user guides and reference pages
@@ -60,6 +78,11 @@ tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm
 | `hook [event] [--agent] [--codex]` | record one lifecycle event |
 | `install-hooks [--claude] [--codex] [--dry-run]` | wire the hooks into Claude/Codex config |
 | `status [--all]` | debug dump of the status rows |
+| `sidebar ensure [-t win]` | idempotently reconcile the sidebar pane(s) for one/all windows |
+| `sidebar install` / `uninstall` | register/remove the index-90 hooks + dock/kill sidebar panes |
+| `sidebar enable` / `disable` | flip `@twm_sidebar_enabled` then install/uninstall |
+| `sidebar toggle [-t win]` | flip per-window `@twm_sidebar_off` and reconcile |
+| `sidebar render` (hidden) | the in-pane render loop; started by `ensure`, not by hand |
 
 The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURCE`).
 
@@ -131,6 +154,62 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   still walks the configured roots (`currentDir`, `$HOME`, `~/code`, `~/go`, and
   `$HOME` top-level children), but emits only candidates with a direct `.git`
   entry. Manually typed paths are still accepted/created by `newSession`.
+- **One sidebar pane per window, funnelled through idempotent `ensure`.** The
+  persistent agents panel (on by default) is a detached `split-window -hbf -l w`
+  pane per window running `<bin> sidebar render`, where `w = min(cfg.Width,
+  window_width/2)` and no sidebar is created under 10 cols. Lifecycle hooks never
+  split directly — they `run-shell -b "<bin> sidebar ensure -t #{window_id}"`,
+  serialized by a `$TMPDIR` flock (`O_NOFOLLOW`, 0600), and the pure
+  `sidebar.Decide` reconciles geometry: wrong position → kill + recreate (the
+  pane is stateless), wrong width → `resize-pane -x`, ≥2 sidebars → keep the
+  correct one, only-sidebar-left → kill the window. A second run is a no-op, so
+  parallel restore hooks converge (recount happens under the lock).
+- **Sidebar panes are identified by a contains-marker, not a suffix.** tmux
+  re-quotes multi-word start commands (`'<bin>' sidebar render` is stored as
+  `"'<bin>' sidebar render"`), so the marker is `pane_start_command` **containing**
+  ` sidebar render` — Go `IsSidebarStartCommand` (`strings.Contains`) and the tmux
+  glob `#{m:* sidebar render*,#{pane_start_command}}`. This single marker drives
+  detection, the picker isolation filter, and the tmux-only hooks.
+- **Fixed hook index 90; never clobber user hooks.** `sidebar install` sets every
+  global hook at array index `90` so a user's hooks at other indices (e.g. index
+  0) survive; `uninstall` unsets exactly that index for the same names.
+  `after-break-pane`/`after-move-window` are intentionally absent (they do not
+  exist; break/move are covered by `window-linked`/`window-unlinked`/
+  `window-layout-changed`). The TPM entry calls `install` on load, which collapses
+  to a pure teardown when resolved-disabled, so it is safe to run unconditionally.
+- **Geometry guard and focus bounce are tmux-only (no process spawn).** The
+  high-frequency `window-layout-changed`/`window-resized`/`client-resized` hooks
+  wrap `ensure` in an `if -F` format that is false when the window already has
+  exactly one correctly-docked sidebar, so mouse drags do not spawn a process per
+  firing (the guard bakes in the install-time width — re-source after changing
+  it). `window-pane-changed` bounces focus off a sidebar with `select-pane -R`
+  (`last-pane` errors with no last pane); sidebar panes have input disabled
+  (`select-pane -d`).
+- **Hidden sidebars sleep; wake on SIGUSR1.** The `render` loop ticks only while
+  visible (window active in an attached session, not zoomed, enabled); hidden it
+  stops the ticker and blocks on SIGUSR1 / SIGWINCH / a 10s fallback. Focus/session
+  hooks (`session-window-changed`, `client-session-changed`, `after-select-window`)
+  `run-shell -b "kill -USR1 <sidebar pids>"` so a hidden→visible flip redraws
+  promptly with no twm process spawned. Visible cost stays ≲3% of a core; `ps` and
+  `db.Live()` are skipped when the pane set and `PRAGMA data_version` are unchanged.
+  The loop ignores SIGINT/SIGQUIT/SIGTSTP and exits cleanly (restoring the
+  terminal) on SIGHUP/SIGTERM or `@twm_sidebar_enabled=0`.
+- **Picker isolation is a single filter.** `AllPanes`/`PanesOf` pass
+  `-f NotSidebarFilter` to `list-panes`, so sidebar panes never appear in picker
+  rows, `list --query` text capture, or preview stacking — no `picker/`/`preview/`
+  edits needed.
+- **Sanitize every external string before rendering.** `sidebar.Sanitize` strips
+  C0/C1/ESC/DEL from prompts, details, and paths (blocking OSC 52 clipboard and
+  OSC 0/2 title injection) before display-width-aware truncation. Only
+  tmux-generated ids are interpolated into hooks/`run-shell`, and the binary path
+  is shell-quoted.
+- **`[sidebar]` config is its own package, separate from `notify/`.** `config/`
+  decodes only the `[sidebar]` table from twm.toml (so the Telegram token in
+  `[telegram]` is never retained), with defaults `{enabled:true, width:32,
+  refresh_ms:1000}`, clamps (width 20..80, refresh 500..10000), and precedence
+  runtime `@twm_sidebar_enabled` > file > defaults. Path resolution duplicates
+  `notify/config.go` deliberately to keep `notify/` untouched; a malformed file
+  yields defaults + a generic `ErrConfig` that never echoes file contents.
 - **PATH priming.** `run-shell` gives a minimal env, so `cli.Execute` prepends
   `/opt/homebrew/bin` and `/usr/local/bin` before any `fzf`/tmux exec.
 - **Build-on-install.** `tmux-window-manager.tmux` rebuilds when the binary is

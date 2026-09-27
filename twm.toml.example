@@ -9,3 +9,10 @@ chat_id = "-1001234567890"
 # include_response = false   # add an excerpt of the agent's last reply
 # min_turn_seconds = 30      # skip "finished" for shorter turns; 0 = always
 # skip_when_focused = true   # skip while the pane is on screen and in use
+
+# Persistent agents sidebar (on by default). Uncomment to customize; set
+# enabled = false to turn it off permanently.
+# [sidebar]
+# enabled = true       # default true; false hides the sidebar in every window
+# width = 32           # columns, clamped 20..80 (capped at half the window width)
+# refresh_ms = 1000    # refresh interval while visible, clamped 500..10000

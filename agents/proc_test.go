@@ -92,6 +92,94 @@ func TestAgentPIDs(t *testing.T) {
 	}
 }
 
+func TestAgents(t *testing.T) {
+	t.Run("nested chain marks outermost", func(t *testing.T) {
+		// 100 = pane shell; 101 = claude under it; 102 = codex nested under claude.
+		snapshot := `  100     1 /bin/zsh
+  101   100 /bin/claude
+  102   101 /bin/codex`
+		d := newDetectorFromSnapshot(snapshot)
+		got := d.Agents("100")
+		want := []AgentProc{
+			{PID: 101, ID: "claude", Outer: true},
+			{PID: 102, ID: "codex", Outer: false},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Agents = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("siblings both outer, ps order preserved", func(t *testing.T) {
+		// Two independent agents under the same shell; neither nests the other.
+		snapshot := `  100     1 /bin/zsh
+  102   100 /bin/codex
+  101   100 /bin/claude`
+		d := newDetectorFromSnapshot(snapshot)
+		got := d.Agents("100")
+		want := []AgentProc{
+			{PID: 102, ID: "codex", Outer: true},
+			{PID: 101, ID: "claude", Outer: true},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Agents = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("no roots", func(t *testing.T) {
+		d := newDetectorFromSnapshot("  100 1 /bin/claude")
+		if got := d.Agents(); got != nil {
+			t.Errorf("Agents() = %v, want nil", got)
+		}
+	})
+
+	t.Run("agent above queried root is not an ancestor", func(t *testing.T) {
+		// 100 = outer claude; 200 = pane shell under it; 201 = inner claude.
+		// Querying only the pane subtree (200) must treat the inner claude as
+		// outermost — the enclosing claude at 100 lives outside the queried
+		// subtree, so it does not count as an agent ancestor.
+		snapshot := `  100     1 /bin/claude
+  200   100 /bin/zsh
+  201   200 /bin/claude`
+		d := newDetectorFromSnapshot(snapshot)
+		got := d.Agents("200")
+		want := []AgentProc{
+			{PID: 201, ID: "claude", Outer: true},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Agents = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("deep claude->codex->claude chain: only topmost is outer", func(t *testing.T) {
+		// 100 = pane shell; 101 = claude; 102 = codex nested; 103 = claude nested.
+		// Only the topmost agent in the chain is outermost; both descendants
+		// have an agent ancestor within the queried subtree.
+		snapshot := `  100     1 /bin/zsh
+  101   100 /bin/claude
+  102   101 /bin/codex
+  103   102 /bin/claude`
+		d := newDetectorFromSnapshot(snapshot)
+		got := d.Agents("100")
+		want := []AgentProc{
+			{PID: 101, ID: "claude", Outer: true},
+			{PID: 102, ID: "codex", Outer: false},
+			{PID: 103, ID: "claude", Outer: false},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Agents = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("roots present but no agents", func(t *testing.T) {
+		snapshot := `  100     1 /bin/zsh
+  101   100 /usr/bin/vim`
+		d := newDetectorFromSnapshot(snapshot)
+		if got := d.Agents("100"); got != nil {
+			t.Errorf("Agents(\"100\") = %v, want nil", got)
+		}
+	})
+}
+
 func TestEmptyDetector(t *testing.T) {
 	d := newDetectorFromSnapshot("")
 	if got := d.Names("1"); got != nil {

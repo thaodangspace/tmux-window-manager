@@ -88,6 +88,92 @@ func TestList(t *testing.T) {
 	}
 }
 
+func TestGitRoot(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+
+	mkdir := func(parts ...string) string {
+		p := filepath.Join(parts...)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	mkGitDir := func(p string) {
+		if err := os.MkdirAll(filepath.Join(p, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkGitFile := func(p string) {
+		if err := os.WriteFile(filepath.Join(p, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mkdir(home)
+
+	// Nested subdir resolves to its repo root.
+	repo := mkdir(home, "code", "projA")
+	mkGitDir(repo)
+	deep := mkdir(repo, "a", "b", "c")
+	if got := gitRoot(deep, home); got != repo {
+		t.Errorf("nested subdir: got %q want %q", got, repo)
+	}
+
+	// Nested repos: the nearest (innermost) wins.
+	inner := mkdir(repo, "vendor", "lib")
+	mkGitDir(inner)
+	innerSub := mkdir(inner, "x")
+	if got := gitRoot(innerSub, home); got != inner {
+		t.Errorf("nested repos: got %q want %q", got, inner)
+	}
+
+	// A worktree .git file counts as a repo root.
+	wt := mkdir(home, "code", "worktree")
+	mkGitFile(wt)
+	wtSub := mkdir(wt, "sub")
+	if got := gitRoot(wtSub, home); got != wt {
+		t.Errorf("worktree .git file: got %q want %q", got, wt)
+	}
+
+	// No repository anywhere on the path.
+	plain := mkdir(home, "code", "plain", "deep")
+	if got := gitRoot(plain, home); got != "" {
+		t.Errorf("no repo: got %q want \"\"", got)
+	}
+
+	// A .git in $HOME is ignored: the walk stops before reaching home.
+	mkGitDir(home)
+	loose := mkdir(home, "loose")
+	if got := gitRoot(loose, home); got != "" {
+		t.Errorf("home .git should be ignored: got %q want \"\"", got)
+	}
+
+	// A path outside home with no repo walks up to / and returns "".
+	outside := mkdir(base, "outside", "nested")
+	if got := gitRoot(outside, home); got != "" {
+		t.Errorf("outside home: got %q want \"\"", got)
+	}
+
+	// Inclusive: a repo root passed directly returns itself.
+	if got := gitRoot(repo, home); got != repo {
+		t.Errorf("inclusive repo root: got %q want %q", got, repo)
+	}
+
+	// Empty path returns "".
+	if got := gitRoot("", home); got != "" {
+		t.Errorf("empty path: got %q want \"\"", got)
+	}
+
+	// With no home boundary, a repo outside any home is still found.
+	extRepo := mkdir(base, "external", "proj")
+	mkGitDir(extRepo)
+	extSub := mkdir(extRepo, "sub")
+	if got := gitRoot(extSub, ""); got != extRepo {
+		t.Errorf("no home boundary: got %q want %q", got, extRepo)
+	}
+}
+
 func TestListNoCurrentDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

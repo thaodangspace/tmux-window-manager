@@ -71,6 +71,7 @@ func newRootCommand() *cobra.Command {
 		newHookCommand(),
 		newInstallHooksCommand(),
 		newStatusCommand(),
+		newSidebarCommand(),
 	)
 
 	return root
