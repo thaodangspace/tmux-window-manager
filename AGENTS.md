@@ -57,6 +57,7 @@ tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm
 | Subcommand | Purpose |
 |------------|---------|
 | `run` / `popup` / `list` / `preview` / `label` | the picker UI (ports of the original script modes) |
+| `toggle-agents [client]` | flip the picker's per-client agents-only filter (Ctrl-A) |
 | `hook [event] [--agent] [--codex]` | record one lifecycle event |
 | `install-hooks [--claude] [--codex] [--dry-run]` | wire the hooks into Claude/Codex config |
 | `status [--all]` | debug dump of the status rows |
@@ -110,6 +111,14 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   `switch-client` to the client's last session (else the first other session)
   in the same tmux invocation. The last remaining session is refused. Session
   targets are `=`-prefixed for exact (not prefix) matching.
+- **Ctrl-A agents-only toggle.** In the picker, `Ctrl-A` flips the list between
+  every window and only windows running a coding agent (plus the session headers
+  that still contain one). Each fzf reload spawns a fresh `list` process that
+  cannot inherit in-memory state, so the toggle lives in a per-client temp file
+  (`$TMPDIR/tmux_wm_agents_<client>.txt`, `picker.AgentsFilterFile`):
+  `toggle-agents` flips it and `list --client` reads it on every reload.
+  `BuildFilteredAgents` applies it through `windowRow.hasAgent`, and the popup
+  clears the file on open so each popup starts unfiltered.
 - **Picker row display mirrors the tmux status panel.** Session headers remain
   the group label; window rows keep `session:index`, raw `window_name`, command,
   path, and model-enriched agent labels only as hidden fzf target/search terms.

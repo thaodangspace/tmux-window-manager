@@ -1,6 +1,8 @@
 package picker
 
 import (
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -20,15 +22,19 @@ func TestShellQuote(t *testing.T) {
 
 func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 	self := "/path with spaces/tmux-window-manager"
-	opts := WindowFzfOptions(self, 160)
+	client := "/dev/ttys003"
+	opts := WindowFzfOptions(self, client, 160)
 	joined := strings.Join(opts, "\x00")
 
 	// The self path must appear shell-quoted in preview/reload binds.
 	q := ShellQuote(self)
+	c := ShellQuote(client)
 	for _, want := range []string{
 		"--preview=" + q + " preview {1}",
-		"--bind=change:reload-sync(" + q + " list --query {q})",
-		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
+		"--bind=change:reload-sync(" + q + " list --query {q} --client " + c + ")",
+		"--bind=ctrl-r:reload-sync(" + q + " list --query {q} --client " + c + ")",
+		// Ctrl-A toggles the per-client agents-only filter, then reloads.
+		"--bind=ctrl-a:execute-silent(" + q + " toggle-agents " + c + ")+reload-sync(" + q + " list --query {q} --client " + c + ")",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("options missing %q\ngot: %v", want, opts)
@@ -61,7 +67,7 @@ func TestWindowFzfOptionsHidesPreviewOnNarrowClients(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := WindowFzfOptions("/usr/bin/twm", tt.width)
+			opts := WindowFzfOptions("/usr/bin/twm", "", tt.width)
 			if !containsOption(opts, tt.want) {
 				t.Fatalf("options missing %q: %v", tt.want, opts)
 			}
@@ -85,5 +91,27 @@ func TestSelectionFilesSanitizesClient(t *testing.T) {
 	}
 	if !strings.Contains(sel, "tmux_wm_sel_") || !strings.Contains(errf, "tmux_wm_err_") {
 		t.Errorf("unexpected temp file names: %q %q", sel, errf)
+	}
+}
+
+func TestAgentsOnlyToggle(t *testing.T) {
+	client := "/dev/twm-test-" + strconv.Itoa(os.Getpid())
+	ClearAgentsOnly(client)
+	t.Cleanup(func() { ClearAgentsOnly(client) })
+
+	if AgentsOnly(client) {
+		t.Fatal("filter should start off")
+	}
+	if on := ToggleAgentsOnly(client); !on {
+		t.Fatal("first toggle should turn the filter on")
+	}
+	if !AgentsOnly(client) {
+		t.Fatal("filter should be on after toggle")
+	}
+	if on := ToggleAgentsOnly(client); on {
+		t.Fatal("second toggle should turn the filter off")
+	}
+	if AgentsOnly(client) {
+		t.Fatal("filter should be off after second toggle")
 	}
 }

@@ -21,10 +21,14 @@ func (s stubEnricher) Window(session string, index int, _, _ string) WindowBadge
 // buildRows mirrors Build but takes an explicit window slice so we don't need a
 // running tmux server in the test.
 func buildRows(windows []tmuxcli.Window, e Enricher) string {
-	return buildRowsFiltered(windows, e, "")
+	return buildRowsAgents(windows, e, "", false)
 }
 
 func buildRowsFiltered(windows []tmuxcli.Window, e Enricher, query string) string {
+	return buildRowsAgents(windows, e, query, false)
+}
+
+func buildRowsAgents(windows []tmuxcli.Window, e Enricher, query string, agentsOnly bool) string {
 	if e == nil {
 		e = NoopEnricher{}
 	}
@@ -35,7 +39,7 @@ func buildRowsFiltered(windows []tmuxcli.Window, e Enricher, query string) strin
 		if session == "" {
 			return
 		}
-		rows := filterGroup(session, group, query)
+		rows := filterGroup(session, group, query, agentsOnly)
 		if len(rows) == 0 {
 			return
 		}
@@ -241,21 +245,61 @@ func TestFilterGroupUsesSubstringMetadataAndPaneContent(t *testing.T) {
 		{target: "work:2", search: "work:2 shell zsh", content: "@thaodangspace/agent-sandbox"},
 	}
 
-	got := filterGroup("work", rows, "thaodangspace")
+	got := filterGroup("work", rows, "thaodangspace", false)
 	if len(got) != 1 || got[0].target != "work:2" {
 		t.Fatalf("pane-content substring match = %#v, want work:2", got)
 	}
 
-	got = filterGroup("work", rows, "editor")
+	got = filterGroup("work", rows, "editor", false)
 	if len(got) != 1 || got[0].target != "work:1" {
 		t.Fatalf("metadata substring match = %#v, want work:1", got)
 	}
 
-	if got := filterGroup("work", rows, "work"); len(got) != 2 {
+	if got := filterGroup("work", rows, "work", false); len(got) != 2 {
 		t.Fatalf("session substring match returned %d rows, want 2", len(got))
 	}
-	if got := filterGroup("work", rows, "missing"); len(got) != 0 {
+	if got := filterGroup("work", rows, "missing", false); len(got) != 0 {
 		t.Fatalf("non-match returned %d rows, want 0", len(got))
+	}
+}
+
+// TestBuildFilteredAgentsOnly asserts Ctrl-A keeps only windows running an
+// agent, drops agent-free windows and sessions that have none, and still
+// combines with a query.
+func TestBuildFilteredAgentsOnly(t *testing.T) {
+	windows := []tmuxcli.Window{
+		{Session: "ai", Index: 1, Active: true, Name: "claude", Command: "node", Path: "/code/app"},
+		{Session: "ai", Index: 2, Name: "shell", Command: "zsh", Path: "/code/app"},
+		{Session: "plain", Index: 1, Name: "editor", Command: "nvim", Path: "/code/lib"},
+	}
+	e := stubEnricher{
+		windows: map[string]WindowBadge{
+			"ai:1": {AgentLabel: "claude(opus)", PaneLabel: "claude", Status: store.Running},
+		},
+	}
+
+	out := buildRowsAgents(windows, e, "", true)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	targets := make([]string, len(lines))
+	for i, ln := range lines {
+		targets[i] = strings.SplitN(ln, "\t", 2)[0]
+	}
+	want := []string{"ai", "ai:1"}
+	if strings.Join(targets, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("agents-only targets = %#v, want %#v\n%s", targets, want, out)
+	}
+	if strings.Contains(out, "plain") || strings.Contains(out, "ai:2") {
+		t.Fatalf("agents-only output should omit agent-free windows/sessions:\n%s", out)
+	}
+
+	// With a query that matches the whole session, only agent rows survive.
+	if got := buildRowsAgents(windows, e, "app", true); strings.Contains(got, "ai:2") || strings.Contains(got, "plain") {
+		t.Fatalf("query+agents-only should still drop agent-free rows:\n%s", got)
+	}
+
+	// Toggle off returns every row again.
+	if got := buildRowsAgents(windows, e, "", false); !strings.Contains(got, "ai:2") || !strings.Contains(got, "plain:1") {
+		t.Fatalf("filter off should keep all rows:\n%s", got)
 	}
 }
 

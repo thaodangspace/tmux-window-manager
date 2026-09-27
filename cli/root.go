@@ -66,6 +66,7 @@ func newRootCommand() *cobra.Command {
 		newRunCommand(),
 		newPopupCommand(),
 		newListCommand(),
+		newToggleAgentsCommand(),
 		newPreviewCommand(),
 		newLabelCommand(),
 		newHookCommand(),

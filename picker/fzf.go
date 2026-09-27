@@ -24,25 +24,32 @@ const MinPreviewClientWidth = 100
 
 // WindowFzfOptions builds the fzf arguments for the main window picker. self is
 // the path to this binary (os.Executable), embedded into the preview/reload
-// bindings so fzf re-invokes the right subcommands. A non-positive
-// clientWidth means the size could not be detected, so the preview remains
-// visible for backwards-compatible behavior.
-func WindowFzfOptions(self string, clientWidth int) []string {
+// bindings so fzf re-invokes the right subcommands. client identifies the
+// launching tmux client so the Ctrl-A agents-only toggle and reloads share a
+// per-client state file. A non-positive clientWidth means the size could not be
+// detected, so the preview remains visible for backwards-compatible behavior.
+func WindowFzfOptions(self, client string, clientWidth int) []string {
 	q := ShellQuote(self)
+	c := ShellQuote(client)
 	previewWindow := "right,60%,follow"
 	if clientWidth > 0 && clientWidth < MinPreviewClientWidth {
 		previewWindow = "hidden"
 	}
+	// reload rebuilds rows from the status DB, honoring the current query and
+	// the per-client agents-only toggle; each reload is a fresh process, so it
+	// reads that toggle from a temp file instead of inheriting state.
+	reload := "reload-sync(" + q + " list --query {q} --client " + c + ")"
 	return []string{
 		"--ansi", "--reverse", "--no-sort", "--prompt=window > ",
 		"--disabled",
 		"--delimiter=\t", "--with-nth=2",
 		"--preview=" + q + " preview {1}",
 		"--preview-window=" + previewWindow,
-		"--bind=change:reload-sync(" + q + " list --query {q})",
-		"--bind=ctrl-r:reload-sync(" + q + " list --query {q})",
+		"--bind=change:" + reload,
+		"--bind=ctrl-r:" + reload,
+		"--bind=ctrl-a:execute-silent(" + q + " toggle-agents " + c + ")+" + reload,
 		"--border",
-		"--header=Enter: switch | Ctrl-N: New | Ctrl-X: Kill session",
+		"--header=Enter: switch | Ctrl-N: New | Ctrl-X: Kill session | Ctrl-A: Agents only",
 		"--print-query", "--expect=ctrl-n,ctrl-x",
 	}
 }
@@ -73,4 +80,39 @@ func SelectionFiles(client string) (selFile, errFile string) {
 	dir := os.TempDir()
 	return filepath.Join(dir, "tmux_wm_sel_"+safe+".txt"),
 		filepath.Join(dir, "tmux_wm_err_"+safe+".txt")
+}
+
+// AgentsFilterFile returns the per-client temp file whose presence means the
+// picker is showing only windows that run a coding agent. Ctrl-A toggles it
+// through the `toggle-agents` subcommand; because every fzf reload spawns a
+// fresh `list` process that cannot inherit in-memory state, `list` reads this
+// file back on each reload. client is sanitized the same way as SelectionFiles.
+func AgentsFilterFile(client string) string {
+	safe := strings.ReplaceAll(client, "/", "_")
+	return filepath.Join(os.TempDir(), "tmux_wm_agents_"+safe+".txt")
+}
+
+// AgentsOnly reports whether the per-client agents-only filter is currently on.
+func AgentsOnly(client string) bool {
+	_, err := os.Stat(AgentsFilterFile(client))
+	return err == nil
+}
+
+// ToggleAgentsOnly flips the per-client agents-only filter and returns the new
+// state. A missing/unwritable file is treated as "off" so the toggle can never
+// wedge the picker.
+func ToggleAgentsOnly(client string) bool {
+	path := AgentsFilterFile(client)
+	if _, err := os.Stat(path); err == nil {
+		_ = os.Remove(path)
+		return false
+	}
+	_ = os.WriteFile(path, []byte("1"), 0o644)
+	return true
+}
+
+// ClearAgentsOnly removes the per-client agents-only filter so each popup opens
+// showing every window rather than inheriting a previous run's toggle.
+func ClearAgentsOnly(client string) {
+	_ = os.Remove(AgentsFilterFile(client))
 }

@@ -15,9 +15,15 @@ searchable even when they are not all displayed.
 | --- | --- |
 | `Enter` | Switch the launching tmux client to the selected session or window |
 | `Ctrl-R` | Reload rows and read the latest status database state |
+| `Ctrl-A` | Toggle an agents-only view: show just the windows running a coding agent (and the sessions that contain one) |
 | `Ctrl-N` | Pick or type a directory, then create or attach to a session |
 | `Ctrl-X` | Kill the selected row's session; if it is your current session you are switched to another one first, and the last session is never killed |
 | `Esc` / `Ctrl-C` | Cancel without switching |
+
+`Ctrl-A` flips between every window and a focused agents-only view. It drops
+windows with no detected coding agent and any session left without one, and it
+combines with the current search query. The toggle resets to "off" each time the
+popup opens.
 
 The preview shows stacked panes for the highlighted window and labels recognized
 coding-agent processes. Clients narrower than 100 columns omit the preview to

@@ -53,13 +53,24 @@ func (NoopEnricher) Window(string, int, string, string) WindowBadge { return Win
 
 // Build returns the fzf input rows for every window across all sessions.
 func Build(e Enricher) (string, error) {
-	return BuildFiltered(e, "")
+	return build(e, "", false)
 }
 
 // BuildFiltered returns fzf input rows, optionally narrowed by query while
 // preserving matching session headers. A query matching the session keeps the
 // whole group; a query matching child rows keeps the header plus matching rows.
 func BuildFiltered(e Enricher, query string) (string, error) {
+	return build(e, query, false)
+}
+
+// BuildFilteredAgents is BuildFiltered plus the Ctrl-A agents-only toggle: when
+// agentsOnly is true, only windows running a coding agent are kept, along with
+// the session headers that still have at least one such window.
+func BuildFilteredAgents(e Enricher, query string, agentsOnly bool) (string, error) {
+	return build(e, query, agentsOnly)
+}
+
+func build(e Enricher, query string, agentsOnly bool) (string, error) {
 	if e == nil {
 		e = NoopEnricher{}
 	}
@@ -86,7 +97,7 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 		if session == "" {
 			return
 		}
-		rows := filterGroup(session, group, query)
+		rows := filterGroup(session, group, query, agentsOnly)
 		if len(rows) == 0 {
 			return
 		}
@@ -112,13 +123,14 @@ func BuildFiltered(e Enricher, query string) (string, error) {
 }
 
 type windowRow struct {
-	target  string
-	dot     string
-	name    string
-	robot   string
-	status  string
-	search  string
-	content string // captured pane body used for matching, never emitted to fzf
+	target   string
+	dot      string
+	name     string
+	robot    string
+	status   string
+	search   string
+	hasAgent bool
+	content  string // captured pane body used for matching, never emitted to fzf
 }
 
 func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
@@ -137,12 +149,13 @@ func newWindowRow(w tmuxcli.Window, wb WindowBadge) windowRow {
 	idx := strconv.Itoa(w.Index)
 	target := w.Session + ":" + idx
 	return windowRow{
-		target: target,
-		dot:    dot,
-		name:   statusPanelName(w, wb),
-		robot:  robot,
-		status: status,
-		search: cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, w.Path, wb.AgentLabel, wb.PaneLabel, wb.Status}, " ")),
+		target:   target,
+		dot:      dot,
+		name:     statusPanelName(w, wb),
+		robot:    robot,
+		status:   status,
+		hasAgent: wb.AgentLabel != "",
+		search:   cleanSearch(strings.Join([]string{target, w.Session, w.Name, w.Command, w.Path, wb.AgentLabel, wb.PaneLabel, wb.Status}, " ")),
 	}
 }
 
@@ -195,13 +208,14 @@ func cleanSearch(s string) string {
 	return strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(s)
 }
 
-func filterGroup(session string, rows []windowRow, query string) []windowRow {
-	if searchMatch(session, query) {
-		return rows
-	}
+func filterGroup(session string, rows []windowRow, query string, agentsOnly bool) []windowRow {
+	sessionMatches := searchMatch(session, query)
 	out := make([]windowRow, 0, len(rows))
 	for _, r := range rows {
-		if searchMatch(r.search, query) || searchMatch(r.content, query) {
+		if agentsOnly && !r.hasAgent {
+			continue
+		}
+		if sessionMatches || searchMatch(r.search, query) || searchMatch(r.content, query) {
 			out = append(out, r)
 		}
 	}

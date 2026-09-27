@@ -31,6 +31,10 @@ func runPopup(client string) error {
 		return err
 	}
 
+	// Each popup opens showing every window: drop any agents-only toggle left
+	// behind by a previous run for this client.
+	picker.ClearAgentsOnly(client)
+
 	// Build the list straight from the status DB (event-driven; no background
 	// scan to spawn). Ctrl-R re-runs `list` to pick up newer hook writes.
 	rows, err := picker.Build(picker.NewLiveEnricher(liveStatus()))
@@ -39,7 +43,7 @@ func runPopup(client string) error {
 	}
 
 	clientWidth := tmuxcli.ClientWidth(client)
-	out, code, runErr := picker.RunFzf(rows, picker.WindowFzfOptions(self, clientWidth))
+	out, code, runErr := picker.RunFzf(rows, picker.WindowFzfOptions(self, client, clientWidth))
 	if runErr != nil {
 		return runErr
 	}
