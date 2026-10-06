@@ -48,9 +48,9 @@ are shown:
 ```toml
 [telegram]
 # Add the model's one-sentence summary of the finished turn to "finished"
-# messages. Off by default because it describes the agent's work and leaves
+# messages. Set false to keep a description of the agent's work from leaving
 # your machine through Telegram's servers.
-include_response = false
+include_response = true
 # Skip "finished" messages when the agent was busy (first screen change to
 # last change) for less than this; 0 sends every turn.
 min_turn_seconds = 30
@@ -70,14 +70,14 @@ A message looks like this:
 ✅ Claude finished · tmux-window-manager · 4m12s
 Where: work:3
 Model: Opus 4.5
-Response: Added the Ctrl-X binding and refused killing the last session.
+
+Added the Ctrl-X binding and refused killing the last session.
 ```
 
 It includes the agent name, project-directory basename, busy duration, the tmux
 `session:window` of the agent pane, and the model name the judge read from the
-screen. "Needs input" messages add the model's summary as `Detail` (prefixed
-with `⚠️` for errors); "finished" messages add it as `Response` only with
-`include_response = true`. Long fields are shortened. Full paths, screen
+screen. The model's summary follows as the unlabeled body; "finished"
+messages leave it out with `include_response = false`. Long fields are shortened. Full paths, screen
 content, PIDs, and credentials are not sent.
 
 "Needs input" messages alert normally; "finished" messages are delivered

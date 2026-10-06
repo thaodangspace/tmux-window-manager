@@ -43,8 +43,9 @@ type fileConfig struct {
 // Options controls which events are delivered and what they contain. They are
 // preferences, not credentials, and are read only from the TOML file.
 type Options struct {
-	// IncludeResponse adds an excerpt of the agent's last reply to completed
-	// turns. Off by default: the text leaves the machine via Telegram.
+	// IncludeResponse adds the model's one-sentence summary of the screen to
+	// completed turns. On by default; turn it off to keep screen-derived text
+	// off a remote transport such as Telegram.
 	IncludeResponse bool
 	// MinTurn suppresses completed-turn messages for turns shorter than this.
 	// Zero sends every completed turn.
@@ -56,7 +57,7 @@ type Options struct {
 
 // DefaultOptions are used for any preference the file leaves unset.
 func DefaultOptions() Options {
-	return Options{MinTurn: 30 * time.Second, SkipWhenFocused: true}
+	return Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true}
 }
 
 func (f fileConfig) options() Options { return f.Telegram.options() }

@@ -287,3 +287,22 @@ func TestWatchLock(t *testing.T) {
 		t.Fatal("stale lock file treated as a running watcher")
 	}
 }
+
+func TestWatcherStopsMidJudge(t *testing.T) {
+	f := newFakeWatcher(t, notify.Options{})
+	ctx, cancel := context.WithCancel(context.Background())
+	f.judge = func(ctx context.Context, _, _ string) (notify.Verdict, error) {
+		cancel() // the stop signal arrives while the model is thinking
+		<-ctx.Done()
+		return notify.Verdict{}, ctx.Err()
+	}
+	f.screens["%1"] = "x"
+	f.scan()
+	f.screens["%1"] = "y"
+	f.scan()
+	f.clock = f.clock.Add(5 * time.Second)
+	f.tick(ctx)
+	if f.status() != store.Working {
+		t.Fatalf("status = %q, want the row left untouched when stopping", f.status())
+	}
+}

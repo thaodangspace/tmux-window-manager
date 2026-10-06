@@ -119,11 +119,11 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
 - **Notifications follow verdicts.** `waiting` / `completed` / `error` notify
   at most once per settled screen (`notifiedHash`); screens present on the
   first scan are seeded as notified, so startup is silent. `error` goes out
-  as "needs input" with a `⚠️` detail prefix. `min_turn_seconds` applies to
+  as "needs input"; the summary is the unlabeled body of every message. `min_turn_seconds` applies to
   completed events using the busy duration (first change → last change);
   `skip_when_focused` uses `tmuxcli.LookupPane` (visible pane of a client with
-  input in the last 2 minutes); `include_response` attaches the summary to
-  completed events. Telegram "finished" messages go out silently.
+  input in the last 2 minutes); `include_response` (default on; set false to
+  keep screen-derived text off Telegram) attaches the summary to completed events. Telegram "finished" messages go out silently.
 - **Backends fan out with independent filters.** `notifiersFromConfig`
   returns every enabled backend (Telegram, macOS); `deliver()` applies each
   backend's own Options. Delivery errors are reduced to categories before

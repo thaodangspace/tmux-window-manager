@@ -80,7 +80,7 @@ The screen text goes only to the configured endpoint. Redirects are refused.
 ## Notifications
 
 - **What notifies.** `waiting`, `completed`, and `error` verdicts. Errors are
-  sent as "needs input" with a `⚠️` prefix on the detail.
+  sent as "needs input".
 - **Once per screen.** A settled screen notifies at most once; the pane must
   change and settle again before it can notify again.
 - **Starting is silent.** Screens already present when the watcher starts never
@@ -88,8 +88,9 @@ The screen text goes only to the configured endpoint. Redirects are refused.
 - **Filters.** Backends with `skip_when_focused = true` skip panes you are
   looking at. `min_turn_seconds` skips "finished" notifications whose busy
   time (first screen change to last change) was shorter.
-- **Content.** The model's summary is the detail of "needs input" messages.
-  Backends with `include_response = true` also attach it to "finished"
+- **Content.** The model's summary is the body of every notification: the
+  detail of "needs input" messages and the summary of "finished" messages.
+  Set `include_response = false` on a backend to leave it out of "finished"
   messages.
 
 ## Operating it

@@ -119,7 +119,8 @@ func TestLoadConfigOptions(t *testing.T) {
 			extra: "include_response = true\nmin_turn_seconds = 90\nskip_when_focused = false\n",
 			want:  Options{IncludeResponse: true, MinTurn: 90 * time.Second},
 		},
-		{name: "zero min turn sends every turn", extra: "min_turn_seconds = 0\n", want: Options{SkipWhenFocused: true}},
+		{name: "zero min turn sends every turn", extra: "min_turn_seconds = 0\n", want: Options{IncludeResponse: true, SkipWhenFocused: true}},
+		{name: "summary opt-out", extra: "include_response = false\n", want: Options{MinTurn: 30 * time.Second, SkipWhenFocused: true}},
 		{name: "negative min turn keeps default", extra: "min_turn_seconds = -5\n", want: DefaultOptions()},
 		{
 			name:  "options apply with environment credentials",

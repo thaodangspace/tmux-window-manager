@@ -74,7 +74,7 @@ func TestCompose(t *testing.T) {
 			name: "waiting",
 			event: Event{Kind: Waiting, Agent: "claude", Cwd: "/Users/dev/code/tmux-window-manager",
 				SessionID: "session-1", Prompt: " Check\nstatus ", Detail: " Permission\nrequired\tto continue. "},
-			want: "🔔 Claude needs input · tmux\\-window\\-manager\n*Session:* session\n*Prompt:* Check status\n*Detail:* Permission required to continue\\.",
+			want: "🔔 Claude needs input · tmux\\-window\\-manager\n*Session:* session\n*Prompt:* Check status\n\nPermission required to continue\\.",
 		},
 		{
 			name: "completed without opt-in response omits assistant detail",
@@ -87,7 +87,7 @@ func TestCompose(t *testing.T) {
 			event: Event{Kind: Completed, Agent: "claude", Cwd: "/work/project", SessionID: "3f2a9c1e-8b7d",
 				Location: "work:3", Model: "Opus 4.5", Prompt: "Run tests", Duration: 4*time.Minute + 12*time.Second,
 				Response: "All tests pass.\nNothing else to do."},
-			want: "✅ Claude finished · project · 4m12s\n*Where:* work:3\n*Model:* Opus 4\\.5\n*Prompt:* Run tests\n*Response:* All tests pass\\. Nothing else to do\\.",
+			want: "✅ Claude finished · project · 4m12s\n*Where:* work:3\n*Model:* Opus 4\\.5\n*Prompt:* Run tests\n\nAll tests pass\\. Nothing else to do\\.",
 		},
 		{
 			name:  "waiting ignores response",
@@ -108,7 +108,7 @@ func TestCompose(t *testing.T) {
 			name: "control and format characters",
 			event: Event{Kind: Waiting, Agent: "cl\x00aude", Cwd: "/work/my\u200bproject",
 				SessionID: "s\u200b1", Prompt: "do\r\nthe\tthing", Detail: "one\r\ntwo\u200dthree"},
-			want: "🔔 Cl aude needs input · my project\n*Session:* s 1\n*Prompt:* do the thing\n*Detail:* one two three",
+			want: "🔔 Cl aude needs input · my project\n*Session:* s 1\n*Prompt:* do the thing\n\none two three",
 		},
 		{
 			name: "escapes dynamic MarkdownV2 syntax",

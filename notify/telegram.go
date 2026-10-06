@@ -48,7 +48,7 @@ const (
 
 // Event is the vendor-neutral input used to compose a notification. Detail is
 // used only for Waiting and Response only for Completed; callers leave
-// Response empty unless the user opted in (Options.IncludeResponse).
+// Response empty when the backend opted out (Options.IncludeResponse).
 type Event struct {
 	Kind      Kind
 	Agent     string
@@ -58,7 +58,7 @@ type Event struct {
 	Model     string
 	Prompt    string // the prompt of the turn being reported
 	Detail    string
-	Response  string        // excerpt of the agent's last reply
+	Response  string        // summary of the finished turn
 	Duration  time.Duration // how long the turn ran; 0 = unknown
 	// AttachURL is an optional validated loopback URL that focuses the
 	// originating tmux pane. Invalid URLs are ignored by Compose.
@@ -141,14 +141,15 @@ func Compose(event Event) string {
 	if prompt := truncateRunes(sanitizeText(event.Prompt), maxPromptChars); prompt != "" {
 		message += "\nPrompt: " + prompt
 	}
+	// The summary is the body: a plain paragraph after the header lines.
 	switch event.Kind {
 	case Waiting:
 		if detail := truncateRunes(sanitizeText(event.Detail), maxDetailChars); detail != "" {
-			message += "\nDetail: " + detail
+			message += "\n\n" + detail
 		}
 	case Completed:
 		if response := truncateRunes(sanitizeText(event.Response), maxResponseChars); response != "" {
-			message += "\nResponse: " + response
+			message += "\n\n" + response
 		}
 	}
 

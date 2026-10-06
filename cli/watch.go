@@ -181,11 +181,17 @@ func newWatcher(cfg notify.PollerConfig, judgeOn bool, socket string, db *store.
 	return w
 }
 
-// run scans until stop fires or the tmux server goes away.
+// run scans until stop fires or the tmux server goes away. stop cancels an
+// in-flight model call, so `--replace` never waits on a slow judge.
 func (w *watcher) run(stop <-chan os.Signal) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-stop
+		cancel()
+	}()
 	ticker := time.NewTicker(w.cfg.Scan)
 	defer ticker.Stop()
-	ctx := context.Background()
 	for {
 		if len(tmuxcli.ListSessions()) == 0 {
 			debugf("watch: tmux server gone, exiting")
@@ -194,7 +200,7 @@ func (w *watcher) run(stop <-chan os.Signal) {
 		w.tick(ctx)
 		select {
 		case <-ticker.C:
-		case <-stop:
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -216,6 +222,9 @@ func (w *watcher) tick(ctx context.Context) {
 
 	seen := map[string]bool{}
 	for _, ap := range w.panes() {
+		if ctx.Err() != nil {
+			return // stopping: keep states and rows as they are
+		}
 		seen[ap.ID] = true
 		raw, err := w.capture(ap.ID)
 		if err != nil {
@@ -263,6 +272,9 @@ func (w *watcher) tick(ctx context.Context) {
 			continue
 		}
 		v, err := w.judge(ctx, ap.Agent, screen)
+		if ctx.Err() != nil {
+			return
+		}
 		if err != nil {
 			debugf("watch: judge %s failed (%s)", ap.ID, notifyErrorCategory(err))
 			st.failedAt = now
@@ -365,10 +377,7 @@ func (w *watcher) notify(ap agentPane, st *paneState, v notify.Verdict) {
 	case notify.ScreenCompleted:
 		e.Kind = notify.Completed
 		e.Duration = busy
-	case notify.ScreenError:
-		e.Kind = notify.Waiting
-		e.Detail = "⚠️ " + v.Summary
-	default:
+	default: // waiting, error
 		e.Kind = notify.Waiting
 		e.Detail = v.Summary
 	}
@@ -509,7 +518,7 @@ func stopWatcher() {
 	if pid == 0 || syscall.Kill(pid, syscall.SIGTERM) != nil {
 		return
 	}
-	for i := 0; i < 30 && runningWatcherPID() != 0; i++ {
+	for i := 0; i < 100 && runningWatcherPID() != 0; i++ {
 		time.Sleep(100 * time.Millisecond)
 	}
 }

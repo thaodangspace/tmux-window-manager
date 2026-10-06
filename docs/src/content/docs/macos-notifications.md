@@ -51,7 +51,7 @@ sound = "default"
 # it is clicked or dismissed.
 timeout_seconds = 43200
 # Same filters as Telegram:
-include_response = false
+include_response = true
 min_turn_seconds = 30
 skip_when_focused = true
 ```

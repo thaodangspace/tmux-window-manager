@@ -119,7 +119,7 @@ func ComposePlain(event Event) (Plain, bool) {
 		}
 	case Completed:
 		if response := truncateRunes(sanitizeText(event.Response), maxResponseChars); response != "" {
-			lines = append(lines, "Response: "+response)
+			lines = append(lines, response)
 		}
 	}
 	if prompt := truncateRunes(sanitizeText(event.Prompt), maxPromptChars); prompt != "" {

@@ -6,7 +6,7 @@ bot_token = "123456789:replace-with-your-bot-token"
 chat_id = "-1001234567890"
 
 # Optional (defaults shown):
-# include_response = false   # add the model's summary to "finished"
+# include_response = true    # add the model's summary to "finished"; false = omit
 # min_turn_seconds = 30      # skip "finished" for shorter turns; 0 = always
 # skip_when_focused = true   # skip while the pane is on screen and in use
 

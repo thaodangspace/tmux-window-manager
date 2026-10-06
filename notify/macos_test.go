@@ -78,7 +78,7 @@ func TestComposePlain(t *testing.T) {
 	if done != (Plain{
 		Title:    "✅ Codex finished",
 		Subtitle: "project · 4m12s",
-		Body:     "Response: all green",
+		Body:     "all green",
 	}) {
 		t.Fatalf("completed = %+v", done)
 	}
