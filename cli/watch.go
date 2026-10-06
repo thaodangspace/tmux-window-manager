@@ -24,6 +24,11 @@ import (
 // judgeBackoff spaces out retries while the model endpoint is failing.
 const judgeBackoff = 30 * time.Second
 
+// serverGoneScans is how many scans in a row must find no tmux server before
+// the watcher exits, so one failed `tmux list-sessions` (sleep/wake, a busy
+// server) does not end it.
+const serverGoneScans = 3
+
 var errWatcherRunning = errors.New("watcher already running")
 
 // newWatchCommand runs the pane watcher, the single source of agent status
@@ -142,6 +147,7 @@ type watcher struct {
 
 	// seams
 	now      func() time.Time
+	serverUp func() bool
 	panes    func() []agentPane
 	capture  func(pane string) (string, error)
 	lookup   func(pane string) (tmuxcli.PaneFocus, bool)
@@ -158,6 +164,9 @@ func newWatcher(cfg notify.PollerConfig, judgeOn bool, socket string, db *store.
 		socket:  socket,
 		states:  map[string]*paneState{},
 		now:     time.Now,
+		serverUp: func() bool {
+			return len(tmuxcli.ListSessions()) > 0
+		},
 		panes:   listAgentPanes,
 		capture: func(pane string) (string, error) { return tmuxcli.CapturePane(pane, false) },
 		lookup: func(pane string) (tmuxcli.PaneFocus, bool) {
@@ -181,8 +190,9 @@ func newWatcher(cfg notify.PollerConfig, judgeOn bool, socket string, db *store.
 	return w
 }
 
-// run scans until stop fires or the tmux server goes away. stop cancels an
-// in-flight model call, so `--replace` never waits on a slow judge.
+// run scans until stop fires or the tmux server is gone for serverGoneScans
+// scans in a row. stop cancels an in-flight model call, so `--replace` never
+// waits on a slow judge.
 func (w *watcher) run(stop <-chan os.Signal) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -192,12 +202,15 @@ func (w *watcher) run(stop <-chan os.Signal) {
 	}()
 	ticker := time.NewTicker(w.cfg.Scan)
 	defer ticker.Stop()
+	misses := 0
 	for {
-		if len(tmuxcli.ListSessions()) == 0 {
+		if w.serverUp() {
+			misses = 0
+			w.tick(ctx)
+		} else if misses++; misses >= serverGoneScans {
 			debugf("watch: tmux server gone, exiting")
 			return
 		}
-		w.tick(ctx)
 		select {
 		case <-ticker.C:
 		case <-ctx.Done():

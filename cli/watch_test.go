@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -304,5 +305,39 @@ func TestWatcherStopsMidJudge(t *testing.T) {
 	f.tick(ctx)
 	if f.status() != store.Working {
 		t.Fatalf("status = %q, want the row left untouched when stopping", f.status())
+	}
+}
+
+func TestWatcherSurvivesTransientServerMiss(t *testing.T) {
+	f := newFakeWatcher(t, notify.Options{})
+	f.cfg.Scan = time.Millisecond
+	// Two misses, one live scan, then the server is gone for good.
+	up := []bool{false, false, true}
+	calls := 0
+	f.serverUp = func() bool {
+		calls++
+		if calls <= len(up) {
+			return up[calls-1]
+		}
+		return false
+	}
+	ticks := 0
+	f.panes = func() []agentPane { ticks++; return nil }
+
+	done := make(chan struct{})
+	go func() {
+		f.run(make(chan os.Signal))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watcher never exited after the server went away")
+	}
+	if ticks != 1 {
+		t.Fatalf("ticks = %d, want 1 (the scan while the server was up)", ticks)
+	}
+	if want := len(up) + serverGoneScans; calls != want {
+		t.Fatalf("server checks = %d, want %d", calls, want)
 	}
 }

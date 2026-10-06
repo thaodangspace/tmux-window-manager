@@ -38,6 +38,7 @@ func runOuter(client string) error {
 	if err != nil {
 		return err
 	}
+	ensureWatcher(self, client)
 	selFile, errFile := picker.SelectionFiles(client)
 	_ = os.Remove(selFile)
 	_ = os.Remove(errFile)
@@ -77,6 +78,22 @@ func runOuter(client string) error {
 		return killSelected(client, target)
 	}
 	return switchTo(client, target)
+}
+
+// ensureWatcher restarts the pane watcher when it is not running, so agent
+// status recovers on the next picker open instead of waiting for a tmux
+// restart. The watcher's lock makes a racing second start a no-op.
+func ensureWatcher(self, client string) {
+	if runningWatcherPID() != 0 {
+		return
+	}
+	argv := []string{self, "watch"}
+	if socket := tmuxcli.DisplayMessage(client, "#{socket_path}"); socket != "" {
+		argv = append(argv, "--socket", socket)
+	}
+	if err := spawnDetached(argv); err != nil {
+		debugf("run: start watcher: %v", err)
+	}
 }
 
 // killSelected kills the selected window or session. Killing the last window
