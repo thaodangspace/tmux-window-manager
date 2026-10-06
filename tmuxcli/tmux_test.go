@@ -153,3 +153,29 @@ func TestLookupPaneRejectsInvalidID(t *testing.T) {
 		t.Fatal("non-canonical target resolved")
 	}
 }
+
+func TestSocketFromEnv(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                                    "",
+		"/private/tmp/tmux-501/default,123,0": "/private/tmp/tmux-501/default",
+		"/tmp/tmux-501/work":                  "/tmp/tmux-501/work",
+	} {
+		if got := SocketFromEnv(in); got != want {
+			t.Errorf("SocketFromEnv(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTmuxCmdSocket(t *testing.T) {
+	prev := Socket
+	t.Cleanup(func() { Socket = prev })
+
+	Socket = ""
+	if got := tmuxCmd("list-clients").Args[1:]; !reflect.DeepEqual(got, []string{"list-clients"}) {
+		t.Fatalf("args without socket = %q", got)
+	}
+	Socket = "/tmp/s"
+	if got := tmuxCmd("list-clients").Args[1:]; !reflect.DeepEqual(got, []string{"-S", "/tmp/s", "list-clients"}) {
+		t.Fatalf("args with socket = %q", got)
+	}
+}

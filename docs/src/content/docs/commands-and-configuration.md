@@ -9,7 +9,7 @@ description: Reference the public commands, tmux options, paths, and environment
 | --- | --- |
 | `run [client]` | Open the popup and switch the launching client to the selected target |
 | `list [--query TEXT]` | Emit grouped fzf rows, optionally preserving headers for matching rows |
-| `install-hooks [--claude] [--codex] [--dry-run]` | Merge Claude hooks and/or print the Codex notify snippet |
+| `uninstall-hooks [--dry-run]` | Remove twm hooks left by older releases from Claude settings and print the Codex `notify` line to delete |
 | `status [--all]` | Print recorded status rows; `--all` includes dead processes |
 | `completion <shell>` | Generate Cobra shell completion |
 
@@ -21,7 +21,10 @@ for troubleshooting and integrations but normally should not be called by hand:
 | `popup [client]` | Run fzf inside the tmux popup and write its selection handoff |
 | `preview <target>` | Render pane previews for an fzf target |
 | `label <pid> [fallback]` | Resolve the nearest coding-agent process name for a status-bar label |
-| `hook [event] [--agent NAME] [--codex]` | Normalize and record an agent lifecycle payload |
+| `watch [--detach] [--replace] [--once] [--socket S]` | Pane watcher: agent status and notifications, started by the plugin; see [Pane watcher](/notification-poller/) |
+| `jump [--socket PATH] <pane-id>` | Switch the most recent tmux client to a pane |
+| `notify-wait --group G [--pane P] [--socket S] [--activate ID] -- ARGV` | Detached macOS notification waiter; jumps to the pane on click |
+| `hook` | Deprecated no-op that exits 0, kept so hooks from older releases do not fail |
 
 Use `tmux-window-manager <command> --help` for current argument and flag details.
 
@@ -54,8 +57,15 @@ setw -g window-status-format "#I: #(basename '#{pane_current_path}')/#(#{@twm_bi
 | `XDG_CONFIG_HOME` | `~/.config` | Change the directory containing optional `twm.toml` |
 | `TWM_TELEGRAM_BOT_TOKEN` | File value | Non-empty Telegram bot-token override |
 | `TWM_TELEGRAM_CHAT_ID` | File value | Non-empty Telegram chat-ID override |
-| `TWM_HOOK_DEBUG` | Disabled | Enable redacted hook diagnostics in `$TMPDIR/twm_hook.log` |
+| `TWM_DEBUG` | Disabled | Enable redacted watcher and delivery diagnostics in `$TMPDIR/twm_debug.log` (set in the tmux server environment) |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Where `uninstall-hooks` looks for `settings.json` |
+| `CODEX_HOME` | `~/.codex` | Where `uninstall-hooks` looks for `config.toml` |
 
-The popup selection handoff also uses short-lived files under `$TMPDIR`. Client
+Optional `twm.toml` sections: `[telegram]` ([Telegram](/telegram/)), `[macos]`
+([macOS notifications](/macos-notifications/)), and `[poller]`
+([Pane watcher](/notification-poller/#configuration)).
+
+The watcher's single-instance lock, `watch.pid`, lives next to the status
+database. The popup selection handoff also uses short-lived files under `$TMPDIR`. Client
 names are sanitized for filenames, and the files are removed after the outer
 command reads them.

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/thaodangspace/tmux-window-manager/tmuxcli"
 )
 
 func TestResolvePath(t *testing.T) {
@@ -26,6 +28,53 @@ func TestResolvePath(t *testing.T) {
 	}
 }
 
+func TestKillSelectedWindowCountsUsingWindowTarget(t *testing.T) {
+	if tmuxcli.Socket != "" {
+		t.Fatal("test requires the default tmux socket")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	fake := `#!/bin/sh
+printf '%s\n' "$*" >> "$TWM_TEST_CALLS"
+case "$*" in
+  'display-message -p -t =beta:2 #{session_windows}') printf '2\n' ;;
+  'kill-window -t =beta:2') ;;
+  *) exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "tmux"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("TWM_TEST_CALLS", log)
+	if err := killSelected("client", "beta:2"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "display-message -p -t =beta:2 #{session_windows}\nkill-window -t =beta:2\n"
+	if string(calls) != want {
+		t.Fatalf("tmux calls = %q, want %q", calls, want)
+	}
+}
+
+func TestKillWindowCommand(t *testing.T) {
+	for _, tt := range []struct {
+		count string
+		ok    bool
+	}{{"2", true}, {"1", false}, {"", false}, {"invalid", false}} {
+		got, ok := killWindowCommand("beta:2", tt.count)
+		if ok != tt.ok {
+			t.Errorf("count %q: ok = %v", tt.count, ok)
+		}
+		if ok && !reflect.DeepEqual(got, []string{"kill-window", "-t", "=beta:2"}) {
+			t.Errorf("count %q: args = %v", tt.count, got)
+		}
+	}
+}
+
 func TestKillSessionCommand(t *testing.T) {
 	sessions := []string{"alpha", "beta", "gamma"}
 	tests := []struct {
@@ -36,15 +85,13 @@ func TestKillSessionCommand(t *testing.T) {
 	}{
 		{name: "other session header", client: "/dev/ttys3", target: "beta", current: "alpha", sessions: sessions,
 			want: []string{"kill-session", "-t", "=beta"}, ok: true},
-		{name: "other session window row", client: "/dev/ttys3", target: "beta:2", current: "alpha", sessions: sessions,
-			want: []string{"kill-session", "-t", "=beta"}, ok: true},
-		{name: "current session switches to last first", client: "/dev/ttys3", target: "beta:1", current: "beta", last: "gamma", sessions: sessions,
+		{name: "current session switches to last first", client: "/dev/ttys3", target: "beta", current: "beta", last: "gamma", sessions: sessions,
 			want: []string{"switch-client", "-c", "/dev/ttys3", "-t", "=gamma", ";", "kill-session", "-t", "=beta"}, ok: true},
 		{name: "current session without last uses first other", target: "beta", current: "beta", sessions: sessions,
 			want: []string{"switch-client", "-t", "=alpha", ";", "kill-session", "-t", "=beta"}, ok: true},
 		{name: "stale last session ignored", client: "c", target: "beta", current: "beta", last: "gone", sessions: sessions,
 			want: []string{"switch-client", "-c", "c", "-t", "=alpha", ";", "kill-session", "-t", "=beta"}, ok: true},
-		{name: "last remaining session refused", client: "c", target: "alpha:0", current: "alpha", sessions: []string{"alpha"}},
+		{name: "last remaining session refused", client: "c", target: "alpha", current: "alpha", sessions: []string{"alpha"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

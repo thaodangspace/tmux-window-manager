@@ -10,7 +10,7 @@ import (
 )
 
 // newStatusCommand dumps the live agent status rows as a table — a debugging
-// aid to inspect what the hooks have recorded and what the picker will show.
+// aid to inspect what the watcher has recorded and what the picker will show.
 func newStatusCommand() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{

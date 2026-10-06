@@ -48,9 +48,10 @@ func WindowFzfOptions(self, client string, clientWidth int) []string {
 		"--bind=change:" + reload,
 		"--bind=ctrl-r:" + reload,
 		"--bind=ctrl-a:execute-silent(" + q + " toggle-agents " + c + ")+" + reload,
+		"--bind=ctrl-x:execute-silent(" + q + " kill-session " + c + " {1})+" + reload,
 		"--border",
-		"--header=Enter: switch | Ctrl-N: New | Ctrl-X: Kill session | Ctrl-A: Agents only",
-		"--print-query", "--expect=ctrl-n,ctrl-x",
+		"--header=Enter: switch | Ctrl-N: New | Ctrl-X: Kill window/session | Ctrl-A: Agents only",
+		"--print-query", "--expect=ctrl-n",
 	}
 }
 

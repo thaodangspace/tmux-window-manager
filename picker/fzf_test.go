@@ -35,6 +35,7 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 		"--bind=ctrl-r:reload-sync(" + q + " list --query {q} --client " + c + ")",
 		// Ctrl-A toggles the per-client agents-only filter, then reloads.
 		"--bind=ctrl-a:execute-silent(" + q + " toggle-agents " + c + ")+reload-sync(" + q + " list --query {q} --client " + c + ")",
+		"--bind=ctrl-x:execute-silent(" + q + " kill-session " + c + " {1})+reload-sync(" + q + " list --query {q} --client " + c + ")",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("options missing %q\ngot: %v", want, opts)
@@ -44,7 +45,7 @@ func TestWindowFzfOptionsEmbedsSelf(t *testing.T) {
 		t.Errorf("options should disable built-in filtering: %v", opts)
 	}
 	// Expected keys and print-query must be present for the run-side parser.
-	if !strings.Contains(joined, "--expect=ctrl-n,ctrl-x") || !strings.Contains(joined, "--print-query") {
+	if !strings.Contains(joined, "--expect=ctrl-n") || !strings.Contains(joined, "--print-query") {
 		t.Errorf("options missing expect/print-query: %v", opts)
 	}
 	for _, removed := range []string{"ctrl-z", "ctrl-t", "open-editor", "Close", "Zed", "Typora"} {

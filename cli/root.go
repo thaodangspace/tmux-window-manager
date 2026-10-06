@@ -2,15 +2,18 @@
 // command results into process exit codes.
 //
 // The subcommands mirror the modes of the original tmux_window_manager.sh,
-// plus the event-driven agent-status commands:
+// plus the agent-status commands:
 //
 //	run           outer launcher: open popup, read selection, switch-client
 //	popup         inside the popup: run fzf, write the selection back
 //	list          emit the window list rows (fzf input)
 //	preview       render a window's panes (fzf --preview)
 //	label         print a pane's agent name for the status bar
-//	hook          record an agent lifecycle event (called from Claude/Codex)
-//	install-hooks wire the status hooks into Claude Code and Codex
+//	hook          deprecated no-op left for hooks older releases installed
+//	jump          focus a pane in the most recent client
+//	notify-wait   wait for a macOS notification click, then jump (detached)
+//	watch         pane watcher daemon: agent status + notifications
+//	uninstall-hooks remove the hooks older releases installed
 //	status        dump the live agent status rows (debug)
 //
 // The binary re-invokes itself for the inner modes; the self-path comes from
@@ -52,7 +55,7 @@ func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "tmux-window-manager",
 		Short:         "Fuzzy tmux window switcher with native agent detection",
-		Long:          "tmux-window-manager is a self-contained fuzzy window switcher for tmux.\nIt lists windows across all sessions, previews their panes, and badges windows\nrunning coding agents (claude/codex/pi) — detected natively, no external tools\nbeyond tmux and fzf.",
+		Long:          "tmux-window-manager is a self-contained fuzzy window switcher for tmux.\nIt lists windows across all sessions, previews their panes, and badges windows\nrunning coding agents (claude, codex, gemini, ...) — detected natively, no external tools\nbeyond tmux and fzf.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -67,10 +70,14 @@ func newRootCommand() *cobra.Command {
 		newPopupCommand(),
 		newListCommand(),
 		newToggleAgentsCommand(),
+		newKillSessionCommand(),
 		newPreviewCommand(),
 		newLabelCommand(),
 		newHookCommand(),
-		newInstallHooksCommand(),
+		newJumpCommand(),
+		newNotifyWaitCommand(),
+		newWatchCommand(),
+		newUninstallHooksCommand(),
 		newStatusCommand(),
 	)
 

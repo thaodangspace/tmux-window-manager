@@ -36,7 +36,7 @@ func runPopup(client string) error {
 	picker.ClearAgentsOnly(client)
 
 	// Build the list straight from the status DB (event-driven; no background
-	// scan to spawn). Ctrl-R re-runs `list` to pick up newer hook writes.
+	// scan to spawn). Ctrl-R re-runs `list` to pick up newer watcher writes.
 	rows, err := picker.Build(picker.NewLiveEnricher(liveStatus()))
 	if err != nil {
 		return err

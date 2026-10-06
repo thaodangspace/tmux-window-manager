@@ -186,3 +186,26 @@ func TestEmptyDetector(t *testing.T) {
 		t.Errorf("empty detector returned %v, want nil", got)
 	}
 }
+
+func TestResolveScripts(t *testing.T) {
+	snapshot := `  100     1 -zsh
+  200   100 node
+  300   100 /opt/homebrew/bin/python3.12
+  400   100 node
+  500     1 node`
+	d := newDetectorFromSnapshot(snapshot)
+	var asked []string
+	d.resolveScripts(func(pids []string) string {
+		asked = pids
+		return `  200 node --no-warnings /opt/homebrew/bin/gemini --yolo
+  300 /opt/homebrew/bin/python3.12 /Users/me/.local/bin/aider.py
+  400 node /usr/local/lib/node_modules/some-server/index.js
+  500 node`
+	})
+	if !reflect.DeepEqual(asked, []string{"200", "300", "400", "500"}) {
+		t.Fatalf("asked args for %v", asked)
+	}
+	if got := d.Names("100"); !reflect.DeepEqual(got, []string{"gemini", "aider"}) {
+		t.Fatalf("Names = %v, want gemini and aider", got)
+	}
+}

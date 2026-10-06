@@ -97,12 +97,12 @@ func TestCompose(t *testing.T) {
 		{
 			name:  "missing session and prompt",
 			event: Event{Kind: Completed, Agent: "claude", Cwd: "/work/project"},
-			want:  "✅ Claude finished · project\n*Session:* unknown\\-session\n*Prompt:* unavailable",
+			want:  "✅ Claude finished · project\n*Session:* unknown\\-session",
 		},
 		{
 			name:  "unknown agent and project",
 			event: Event{Kind: Waiting, Cwd: "/"},
-			want:  "🔔 Agent needs input · unknown\\-project\n*Session:* unknown\\-session\n*Prompt:* unavailable",
+			want:  "🔔 Agent needs input · unknown\\-project\n*Session:* unknown\\-session",
 		},
 		{
 			name: "control and format characters",
@@ -129,7 +129,7 @@ func TestCompose(t *testing.T) {
 		{
 			name:  "invalid attach link omitted",
 			event: Event{Kind: Completed, Agent: "claude", Cwd: "/work/project", AttachURL: "http://localhost:49152/attach/secret"},
-			want:  "✅ Claude finished · project\n*Session:* unknown\\-session\n*Prompt:* unavailable",
+			want:  "✅ Claude finished · project\n*Session:* unknown\\-session",
 		},
 	}
 

@@ -9,7 +9,7 @@ import (
 
 // alive reports whether a process id is still running. A pid of 0 (or negative)
 // means "unknown" and is treated as live so we never hide an agent just because
-// its hook couldn't resolve a pid. signal 0 performs existence/permission
+// its pid was not resolved. signal 0 performs existence/permission
 // checks without delivering a signal: nil or EPERM => the process exists; ESRCH
 // => it is gone.
 func alive(pid int) bool {

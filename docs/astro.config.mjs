@@ -13,7 +13,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'tmux-window-manager',
-      description: 'A fuzzy tmux window switcher with event-driven coding-agent status.',
+      description: 'A fuzzy tmux window switcher with coding-agent status read from your panes.',
       social: [
         {
           icon: 'github',
@@ -35,6 +35,8 @@ export default defineConfig({
             { label: 'Window picker', slug: 'window-picker' },
             { label: 'Agent status', slug: 'agent-status' },
             { label: 'Telegram notifications', slug: 'telegram' },
+            { label: 'macOS notifications', slug: 'macos-notifications' },
+            { label: 'Pane watcher and model judge', slug: 'notification-poller' },
           ],
         },
         {

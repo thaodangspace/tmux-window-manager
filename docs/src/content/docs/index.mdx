@@ -3,7 +3,7 @@ title: tmux-window-manager
 description: Switch tmux windows quickly and see which coding agents need attention.
 template: splash
 hero:
-  tagline: A fuzzy tmux window switcher with event-driven coding-agent status.
+  tagline: A fuzzy tmux window switcher with coding-agent status read from your panes.
   actions:
     - text: Get started
       link: /getting-started/
@@ -20,15 +20,16 @@ import narrowScreenshot from '../../assets/picker-narrow.png';
 
 `tmux-window-manager` is a TPM plugin and self-contained Go binary. Press
 `prefix + w` to search every tmux window, inspect pane previews, and switch
-without leaving the keyboard. Coding agents can report whether they are working
-or waiting for you, without polling pane text.
+without leaving the keyboard. A background watcher reads each coding agent's
+pane to show whether it is working, and an optional local model tells you when
+it is waiting for you or finished.
 
 <CardGrid stagger>
   <Card title="Switch quickly" icon="rocket">
     Search windows across sessions in a grouped fzf picker with a live pane preview.
   </Card>
   <Card title="See agent state" icon="information">
-    Claude and Codex hooks write lifecycle state to a local SQLite database, powering working and waiting badges.
+    Claude Code, Codex, Gemini CLI, Aider, and other agents are detected by process, with no hooks or per-agent setup.
   </Card>
   <Card title="Stay in control" icon="setting">
     Create sessions, open project directories, and refresh live status.

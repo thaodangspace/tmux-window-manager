@@ -1,51 +1,74 @@
 ---
 title: Agent status
-description: Configure event-driven Claude and Codex lifecycle badges.
+description: How the pane watcher detects coding agents and badges their windows.
 ---
 
-Agent status is event-driven. Hooks invoke `tmux-window-manager hook`, and each
-event updates a local SQLite row. The picker reads that database when it opens or
-when you press `Ctrl-R`; it does not scrape pane text or poll transcripts.
+Agent status comes from the panes themselves. When tmux loads the plugin, it
+starts `tmux-window-manager watch` in the background. The watcher captures every
+pane running a coding agent, writes one status row per pane to a local SQLite
+database, and the picker reads that database when it opens or when you press
+`Ctrl-R`. There is nothing to install per agent.
 
-## Install supported hooks
+## Supported agents
 
-Run the installer using the binary built by TPM or from source:
+Agents are found by walking each pane's process tree. These process names are
+recognized:
 
-```sh
-tmux-window-manager install-hooks
-```
+`claude`, `codex`, `pi`, `gemini`, `opencode`, `cursor-agent`, `aider`, `amp`,
+`goose`, `qwen`, `crush`, `droid`, `copilot`
 
-By default it handles both integrations:
+Agents launched through an interpreter (`node`, `bun`, `deno`, `python`,
+`python3`, `python3.x`) are matched by their script name without extension, so
+`node /opt/homebrew/bin/gemini` is detected as `gemini`.
 
-- **Claude Code:** idempotently merges `SessionStart`, `UserPromptSubmit`,
-  `Notification`, `Stop`, and `SessionEnd` commands into
-  `~/.claude/settings.json`. Existing non-plugin settings and hooks are preserved.
-- **Codex:** prints the `notify = [...]` line to add manually to
-  `~/.codex/config.toml`.
+## How status is decided
 
-Preview without changing Claude settings:
+Every 5 seconds the watcher captures the last 60 lines of each agent pane and
+compares it with the previous scan. Digits are ignored, so elapsed-time and
+token counters do not count as change.
 
-```sh
-tmux-window-manager install-hooks --claude --dry-run
-```
+- **Screen changed** → `working`.
+- **Screen unchanged for 6 seconds** → judged once:
+  - with the [model judge](/notification-poller/) enabled, a local model reads
+    the screen and returns `working`, `waiting`, `completed`, `error`, or
+    `idle`, plus a one-sentence summary and the model name if one is printed
+    on screen;
+  - without it, the pane becomes `idle`.
+- A screen the model judged `working` that stays unchanged (a long silent tool
+  call) is re-judged every 2 minutes.
 
-Select only one integration with `--claude` or `--codex`. With neither flag, both
-are selected. Re-running the installer does not duplicate its Claude hooks.
+Badges therefore lag the screen by at most one scan, the settle time, and one
+model call. Scan, settle, and re-judge timings are configurable in
+[`[poller]`](/notification-poller/#configuration).
 
 ## Status meanings
 
 | State | Picker meaning |
 | --- | --- |
-| Working (`⟳`) | The agent is processing a prompt or turn |
-| Waiting (`🔔`) | The agent emitted a notification and needs user attention |
-| Idle / no badge | No live status row currently applies to the window directory |
+| Working (`⟳`) | The agent's screen is changing, or the model says it is still running |
+| Waiting (`🔔`) | The model says the agent needs you: a permission prompt, a question, a choice |
+| Error | The model says the agent stopped on a failure |
+| Idle / no status | Settled screen: turn finished, empty prompt, or no model verdict |
 
-Agent names and models are captured with lifecycle data. Claude model and latest
-text are read with a bounded transcript tail; the first user prompt comes from
-the prompt event. Codex uses fields in its notify payload.
+Waiting and error require the model judge. A `completed` verdict is shown as
+idle; it only matters for [notifications](/notification-poller/). The model name
+the judge reads from the screen appears next to the agent name in the picker.
 
-Process detection can recognize Claude, Codex, and Pi for pane labels and
-previews. The automatic hook installer configures Claude and Codex only.
+## Upgrading from a release that used hooks
+
+Older releases recorded status through Claude Code hooks and the Codex `notify`
+program, set up by a hook installer that no longer exists. Remove them once:
+
+```sh
+tmux-window-manager uninstall-hooks --dry-run   # preview
+tmux-window-manager uninstall-hooks
+```
+
+It removes every twm hook group from `$CLAUDE_CONFIG_DIR/settings.json` (or
+`~/.claude/settings.json`), keeping your other settings and hooks, and prints
+the line number of the twm `notify = [...]` line in `$CODEX_HOME/config.toml`
+(or `~/.codex/config.toml`) for you to delete by hand. Until you do, old hooks
+call a no-op command that exits successfully.
 
 ## Storage and cleanup
 
@@ -56,12 +79,10 @@ The default database is:
 ```
 
 `$XDG_STATE_HOME` changes the state root, and `$TWM_DB_PATH` overrides the full
-path. SQLite uses WAL mode and a busy timeout for concurrent, short-lived hook
-writers.
-
-Rows include the resolved agent process ID. Normal reads hide and lazily remove
-rows whose process is no longer alive, so a crashed agent clears even when a
-session-end event was missed.
+path. Only the watcher writes it. Rows are keyed per pane (`pane:%N`) and carry
+the agent's process ID; normal reads hide rows whose process is no longer
+alive. When the watcher starts it clears every row and rebuilds them from the
+panes, and it removes the row of a pane that no longer runs an agent.
 
 Inspect live rows with:
 
@@ -71,8 +92,8 @@ tmux-window-manager status
 
 Include dead rows for debugging with `status --all`.
 
-:::important[Hooks never block the agent]
-The hook command always exits successfully. Database, payload, or transcript
-failures cannot block Claude or Codex. Set `TWM_HOOK_DEBUG=1` before launching
-the agent to write redacted diagnostics to `$TMPDIR/twm_hook.log`.
+:::tip[Debug log]
+Set `TWM_DEBUG=1` in the tmux server environment and restart the watcher to log
+redacted diagnostics (scans, verdicts, delivery failures) to
+`$TMPDIR/twm_debug.log`.
 :::

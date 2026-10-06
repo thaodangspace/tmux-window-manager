@@ -74,12 +74,43 @@ func runOuter(client string) error {
 		return nil
 	}
 	if key == "ctrl-x" {
-		return killSession(client, target)
+		return killSelected(client, target)
 	}
 	return switchTo(client, target)
 }
 
-// killSession kills the session containing the selected row. Killing the
+// killSelected kills the selected window or session. Killing the last window
+// also destroys its session, so route that case through killSession to move
+// the client to another session first (or refuse the last remaining session).
+func killSelected(client, target string) error {
+	if session, index, isWindow := strings.Cut(target, ":"); isWindow {
+		if session == "" || index == "" {
+			return nil
+		}
+		// display-message needs a window/pane context for session_windows;
+		// "=session" alone resolves to an empty format on tmux 3.5a.
+		count := tmuxcli.DisplayMessage("="+target, "#{session_windows}")
+		if count == "1" {
+			return killSession(client, session)
+		}
+		args, ok := killWindowCommand(target, count)
+		if !ok {
+			return tmuxcli.Command("display-message", "twm: cannot determine window count")
+		}
+		return tmuxcli.Command(args...)
+	}
+	return killSession(client, target)
+}
+
+func killWindowCommand(target, count string) ([]string, bool) {
+	n, err := strconv.Atoi(count)
+	if err != nil || n <= 1 {
+		return nil, false
+	}
+	return []string{"kill-window", "-t", "=" + target}, true
+}
+
+// killSession kills the selected session header. Killing the
 // session the client is attached to would detach the client (tmux's default
 // detach-on-destroy), so the client is moved to another session first. The
 // last remaining session is never killed.

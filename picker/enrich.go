@@ -10,12 +10,12 @@ import (
 )
 
 // LiveEnricher decorates the window list with agent badges. The agent *name*
-// comes from the live process table (the detector sees which of claude/codex/pi
-// actually run in each window's panes), so an agent shows up even when its hooks
-// haven't reported — e.g. a Codex session, whose only hook fires at turn end.
+// comes from the live process table (the detector sees which coding agents
+// actually run in each window's panes), so an agent shows up even before the
+// watcher has judged its pane.
 //
 // The status DB then *enriches* that badge: agents push lifecycle status
-// (idle/working/waiting/error) and model via hooks, each row carrying the pid of the
+// (idle/working/waiting/error) and model via the watcher, each row carrying the pid of the
 // agent process it belongs to. We match those rows to a window by pid, not by
 // the pane's working directory — pid matching is what keeps a codex window and a
 // claude window distinct when they share a directory (directory matching

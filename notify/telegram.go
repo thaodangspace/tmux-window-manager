@@ -1,6 +1,6 @@
 // Package notify provides optional outbound notifications for agent lifecycle
 // events. It deliberately has no dependency on the agent payload or status
-// store packages so transports remain isolated from hook normalization and
+// store packages so transports remain isolated from agent detection and
 // persistence.
 package notify
 
@@ -63,6 +63,10 @@ type Event struct {
 	// AttachURL is an optional validated loopback URL that focuses the
 	// originating tmux pane. Invalid URLs are ignored by Compose.
 	AttachURL string
+	// Pane and TmuxSocket locate the agent pane for clickable local
+	// notifications (macOS). Remote transports ignore them.
+	Pane       string
+	TmuxSocket string
 }
 
 // Config contains the credentials for one Telegram destination. Callers should
@@ -134,11 +138,9 @@ func Compose(event Event) string {
 	if model := sanitizeText(event.Model); model != "" {
 		message += "\nModel: " + model
 	}
-	prompt := truncateRunes(sanitizeText(event.Prompt), maxPromptChars)
-	if prompt == "" {
-		prompt = "unavailable"
+	if prompt := truncateRunes(sanitizeText(event.Prompt), maxPromptChars); prompt != "" {
+		message += "\nPrompt: " + prompt
 	}
-	message += "\nPrompt: " + prompt
 	switch event.Kind {
 	case Waiting:
 		if detail := truncateRunes(sanitizeText(event.Detail), maxDetailChars); detail != "" {
@@ -364,6 +366,16 @@ func newTelegram(cfg Config, baseURL string, client *http.Client) *Telegram {
 		chatID:   cfg.ChatID,
 		client:   &cloned,
 	}
+}
+
+// Notify composes event as MarkdownV2 and sends it. Only "needs input"
+// messages alert; completed turns arrive silently.
+func (t *Telegram) Notify(ctx context.Context, event Event) error {
+	message := Compose(event)
+	if message == "" {
+		return ErrRequest
+	}
+	return t.Send(ctx, message, event.Kind == Completed)
 }
 
 // Send calls Telegram Bot API sendMessage. A silent message is delivered

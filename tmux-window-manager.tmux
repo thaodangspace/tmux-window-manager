@@ -54,6 +54,11 @@ while IFS= read -r window; do
   [ -n "$window" ] && tmux set-option -wu -t "$window" @twm_sidebar_off 2>/dev/null || true
 done < <(tmux list-windows -a -F '#{window_id}' 2>/dev/null || true)
 
+# Start (or restart after a rebuild) the pane watcher: it records agent status
+# for the picker and, with `[poller] enabled = true` in ~/.config/twm.toml,
+# asks a local model when to notify.
+"$BIN" watch --detach --replace --socket "$(tmux display-message -p '#{socket_path}')" >/dev/null 2>&1 || true
+
 KEY="$(tmux show-option -gqv @twm_key)"
 [ -n "$KEY" ] || KEY="w"
 tmux bind-key "$KEY" run-shell -b "$BIN run '#{client_name}'"

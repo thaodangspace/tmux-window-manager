@@ -20,10 +20,28 @@ import (
 // formats never contain literal tabs in the fields we request.
 const sep = "\t"
 
+// Socket, when set, is passed as `tmux -S <socket>` so commands reach a
+// specific server from outside tmux (no $TMUX), e.g. a notification click.
+var Socket string
+
+func tmuxCmd(args ...string) *exec.Cmd {
+	if Socket != "" {
+		args = append([]string{"-S", Socket}, args...)
+	}
+	return exec.Command("tmux", args...)
+}
+
+// SocketFromEnv extracts the server socket path from a $TMUX value
+// ("<socket>,<pid>,<session>"). It returns "" outside tmux.
+func SocketFromEnv(tmux string) string {
+	socket, _, _ := strings.Cut(tmux, ",")
+	return strings.TrimSpace(socket)
+}
+
 // run executes `tmux args...` and returns stdout. tmux errors (e.g. no server)
 // are returned to the caller, which generally treats them as "no data".
 func run(args ...string) (string, error) {
-	out, err := exec.Command("tmux", args...).Output()
+	out, err := tmuxCmd(args...).Output()
 	return string(out), err
 }
 
@@ -356,7 +374,7 @@ func HasSession(name string) bool {
 // error. Used for state-changing commands (switch-client, new-session, the
 // compound switch+select) and for display-popup.
 func Command(args ...string) error {
-	return exec.Command("tmux", args...).Run()
+	return tmuxCmd(args...).Run()
 }
 
 func nonEmptyLines(s string) []string {

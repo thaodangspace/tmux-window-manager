@@ -17,7 +17,7 @@ func newListCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Agent presence, name, model, and status all come from the status
-			// DB, which agents push to via lifecycle hooks. A missing/unreadable
+			// DB, which the pane watcher writes. A missing/unreadable
 			// DB degrades to a plain window list (no badges).
 			//
 			// client locates the per-client agents-only toggle file written by

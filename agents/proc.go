@@ -30,7 +30,59 @@ type Detector struct {
 // reports no agents, so callers degrade gracefully.
 func NewDetector() *Detector {
 	out, _ := exec.Command("ps", "-axo", "pid=,ppid=,comm=").Output()
-	return newDetectorFromSnapshot(string(out))
+	d := newDetectorFromSnapshot(string(out))
+	d.resolveScripts(func(pids []string) string {
+		out, _ := exec.Command("ps", "-o", "pid=,args=", "-p", strings.Join(pids, ",")).Output()
+		return string(out)
+	})
+	return d
+}
+
+// interpreters run agents shipped as scripts (gemini, aider, ...), whose
+// process name is the runtime rather than the agent.
+var interpreters = map[string]bool{
+	"node": true, "bun": true, "deno": true, "python": true, "python3": true,
+}
+
+// resolveScripts renames interpreter processes after the script they run when
+// that script is a known agent (`node /opt/homebrew/bin/gemini` -> gemini).
+// args fetches `ps -o pid=,args=` for the given pids in one call.
+func (d *Detector) resolveScripts(args func(pids []string) string) {
+	var pids []string
+	for _, p := range d.order {
+		if interpreters[p.name] || strings.HasPrefix(p.name, "python3.") {
+			pids = append(pids, p.pid)
+		}
+	}
+	if len(pids) == 0 {
+		return
+	}
+	scripts := map[string]string{}
+	for _, line := range strings.Split(args(pids), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		// fields[1] is the interpreter; the first non-flag argument is the script.
+		for _, a := range fields[2:] {
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			name := basename(a)
+			if i := strings.LastIndex(name, "."); i > 0 {
+				name = name[:i] // gemini.js -> gemini
+			}
+			if IsAgent(name) {
+				scripts[fields[0]] = name
+			}
+			break
+		}
+	}
+	for i, p := range d.order {
+		if name, ok := scripts[p.pid]; ok {
+			d.order[i].name = name
+		}
+	}
 }
 
 // NewDetectorFromSnapshot builds a Detector from a `ps -axo pid=,ppid=,comm=`
@@ -146,12 +198,10 @@ func (d *Detector) Agents(rootPIDs ...string) []AgentProc {
 }
 
 // AgentGroup is one outermost agent together with every agent pid in its nested
-// chain (the outer agent's own pid included), all within the queried subtree. It
-// exists so a caller can join a status row that a hook attributed to a nested
-// (inner) agent back to the outer agent shown to the user: the hook handler
-// resolves an event to the *nearest* agent (see NearestAgent), so a codex
-// launched by claude records status under codex's inner pid even though the panel
-// row is the outer claude.
+// chain (the outer agent's own pid included), all within the queried subtree.
+// The watcher attributes a pane to its outermost agent, so a codex launched by
+// claude shows as the outer claude; Members lets a caller match any pid in the
+// chain.
 type AgentGroup struct {
 	PID     int    // outermost agent's pid
 	ID      string // outermost agent's basename
@@ -275,33 +325,6 @@ func (d *Detector) byPID() map[string]proc {
 		m[p.pid] = p
 	}
 	return m
-}
-
-// NearestAgent walks up the process tree from startPID and returns the pid and
-// basename of the closest ancestor (startPID itself included) that is a coding
-// agent. It is how the hook handler — which runs as a short-lived child of the
-// agent — discovers which agent process to attribute its event to, so the
-// reader can later gate on that pid's liveness. Returns (0, "") when no agent
-// ancestor is found or the walk loops.
-func (d *Detector) NearestAgent(startPID string) (int, string) {
-	if startPID == "" || len(d.order) == 0 {
-		return 0, ""
-	}
-	index := d.byPID()
-	seen := make(map[string]bool)
-	for cur := startPID; cur != "" && cur != "0" && !seen[cur]; {
-		seen[cur] = true
-		p, ok := index[cur]
-		if !ok {
-			break
-		}
-		if IsAgent(p.name) {
-			pid, _ := strconv.Atoi(p.pid)
-			return pid, p.name
-		}
-		cur = p.ppid
-	}
-	return 0, ""
 }
 
 func basename(s string) string {

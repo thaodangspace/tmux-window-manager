@@ -14,17 +14,30 @@ const configFileName = "twm.toml"
 
 // ErrConfigFile means the optional twm TOML file could not be read or parsed.
 // It deliberately omits the path and parser detail so malformed secret values
-// cannot reach hook diagnostics.
-var ErrConfigFile = errors.New("telegram config file could not be loaded")
+// cannot reach debug logs.
+var ErrConfigFile = errors.New("twm config file could not be loaded")
+
+// optionKeys are the filter/content preferences every backend section accepts.
+type optionKeys struct {
+	IncludeResponse *bool `toml:"include_response"`
+	MinTurnSeconds  *int  `toml:"min_turn_seconds"`
+	SkipWhenFocused *bool `toml:"skip_when_focused"`
+}
 
 type fileConfig struct {
 	Telegram struct {
-		BotToken        string `toml:"bot_token"`
-		ChatID          string `toml:"chat_id"`
-		IncludeResponse *bool  `toml:"include_response"`
-		MinTurnSeconds  *int   `toml:"min_turn_seconds"`
-		SkipWhenFocused *bool  `toml:"skip_when_focused"`
+		BotToken string `toml:"bot_token"`
+		ChatID   string `toml:"chat_id"`
+		optionKeys
 	} `toml:"telegram"`
+	MacOS struct {
+		Enabled          bool    `toml:"enabled"`
+		TerminalBundleID string  `toml:"terminal_bundle_id"`
+		Sound            *string `toml:"sound"`
+		TimeoutSeconds   *int    `toml:"timeout_seconds"`
+		optionKeys
+	} `toml:"macos"`
+	Poller pollerKeys `toml:"poller"`
 }
 
 // Options controls which events are delivered and what they contain. They are
@@ -46,9 +59,10 @@ func DefaultOptions() Options {
 	return Options{MinTurn: 30 * time.Second, SkipWhenFocused: true}
 }
 
-func (f fileConfig) options() Options {
+func (f fileConfig) options() Options { return f.Telegram.options() }
+
+func (t optionKeys) options() Options {
 	opts := DefaultOptions()
-	t := f.Telegram
 	if t.IncludeResponse != nil {
 		opts.IncludeResponse = *t.IncludeResponse
 	}

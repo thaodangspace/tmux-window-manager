@@ -6,6 +6,30 @@ bot_token = "123456789:replace-with-your-bot-token"
 chat_id = "-1001234567890"
 
 # Optional (defaults shown):
-# include_response = false   # add an excerpt of the agent's last reply
+# include_response = false   # add the model's summary to "finished"
 # min_turn_seconds = 30      # skip "finished" for shorter turns; 0 = always
 # skip_when_focused = true   # skip while the pane is on screen and in use
+
+# macOS Notification Center via `brew install alerter`.
+# Clicking a notification jumps to the agent's tmux pane.
+# [macos]
+# enabled = true
+# terminal_bundle_id = "com.googlecode.iterm2"  # default: the launching terminal
+# sound = "default"          # for "needs input"; "" = silent
+# timeout_seconds = 43200    # close unclicked notifications; 0 = never
+# include_response / min_turn_seconds / skip_when_focused as above
+
+# Pane watcher. Without `enabled = true` a changing agent screen shows as
+# working, a settled one as idle, and nothing is sent. With it, a local
+# OpenAI-compatible model (LM Studio) judges settled screens and decides when
+# to notify through the sections above. Restart the watcher after editing
+# (reload tmux, or `tmux-window-manager watch --detach --replace`).
+# [poller]
+# enabled = true
+# endpoint = "http://localhost:1234/v1"
+# model = "google/gemma-4-12b"
+# scan_seconds = 5           # capture agent panes this often; minimum 1
+# settle_seconds = 6         # unchanged this long before the model judges it
+# interval_seconds = 120     # re-judge a still "working" screen; minimum 10
+# lines = 60                 # trailing screen lines sent to the model
+# timeout_seconds = 180      # first call may wait for the model to load

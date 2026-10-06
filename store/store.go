@@ -38,7 +38,7 @@ type Status struct {
 	Prompt    string // first user prompt of the session
 	Latest    string // most recent assistant message
 	UpdatedAt int64  // unix milliseconds
-	Event     string // history-only: the hook event that produced this write
+	Event     string // history-only: the event that produced this write
 
 	// TurnPrompt and TurnStartedAt describe the current turn: each
 	// UserPromptSubmit replaces them, other writes keep the stored values.
@@ -61,8 +61,8 @@ func Open() (*DB, error) {
 	return OpenAt(path)
 }
 
-// OpenAt opens the DB at an explicit path. WAL + a 5s busy timeout let many
-// short-lived hook writers run concurrently without spurious "database is
+// OpenAt opens the DB at an explicit path. WAL + a 5s busy timeout let the
+// watcher write while picker processes read, without spurious "database is
 // locked" errors.
 func OpenAt(path string) (*DB, error) {
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"

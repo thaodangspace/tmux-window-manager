@@ -8,11 +8,22 @@ type Kind struct {
 }
 
 // Kinds is the single source of truth for the coding-agent process basenames we
-// detect. The set is identical to the original script's `^(claude|codex|pi)$`.
+// detect. Agents started through an interpreter (node, bun, python) match by
+// their script name; see Detector.resolveScripts.
 var Kinds = []Kind{
 	{ID: "claude", Display: "Claude Code"},
 	{ID: "codex", Display: "Codex"},
 	{ID: "pi", Display: "pi"},
+	{ID: "gemini", Display: "Gemini CLI"},
+	{ID: "opencode", Display: "OpenCode"},
+	{ID: "cursor-agent", Display: "Cursor Agent"},
+	{ID: "aider", Display: "Aider"},
+	{ID: "amp", Display: "Amp"},
+	{ID: "goose", Display: "Goose"},
+	{ID: "qwen", Display: "Qwen Code"},
+	{ID: "crush", Display: "Crush"},
+	{ID: "droid", Display: "Droid"},
+	{ID: "copilot", Display: "Copilot CLI"},
 }
 
 // kindByID indexes Kinds by process basename for O(1) membership and lookups.
