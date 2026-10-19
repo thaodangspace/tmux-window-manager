@@ -117,17 +117,23 @@ func TestLoadConfigOptions(t *testing.T) {
 		{
 			name:  "all set",
 			extra: "include_response = true\nmin_turn_seconds = 90\nskip_when_focused = false\n",
-			want:  Options{IncludeResponse: true, MinTurn: 90 * time.Second},
+			want:  Options{IncludeResponse: true, MinTurn: 90 * time.Second, When: WhenAlways, AwayAfter: 5 * time.Minute},
 		},
-		{name: "zero min turn sends every turn", extra: "min_turn_seconds = 0\n", want: Options{IncludeResponse: true, SkipWhenFocused: true}},
-		{name: "summary opt-out", extra: "include_response = false\n", want: Options{MinTurn: 30 * time.Second, SkipWhenFocused: true}},
+		{name: "zero min turn sends every turn", extra: "min_turn_seconds = 0\n", want: Options{IncludeResponse: true, SkipWhenFocused: true, When: WhenAlways, AwayAfter: 5 * time.Minute}},
+		{name: "summary opt-out", extra: "include_response = false\n", want: Options{MinTurn: 30 * time.Second, SkipWhenFocused: true, When: WhenAlways, AwayAfter: 5 * time.Minute}},
 		{name: "negative min turn keeps default", extra: "min_turn_seconds = -5\n", want: DefaultOptions()},
 		{
 			name:  "options apply with environment credentials",
 			extra: "include_response = true\n",
 			env:   map[string]string{botTokenEnv: "env-t", chatIDEnv: "env-c"},
-			want:  Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true},
+			want:  DefaultOptions(),
 		},
+		{
+			name:  "presence routing",
+			extra: "when = \" Away \"\naway_seconds = 120\n",
+			want:  Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true, When: WhenAway, AwayAfter: 2 * time.Minute},
+		},
+		{name: "unknown when and bad away keep defaults", extra: "when = \"sometimes\"\naway_seconds = 0\n", want: DefaultOptions()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

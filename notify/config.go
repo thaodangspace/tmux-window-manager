@@ -19,9 +19,11 @@ var ErrConfigFile = errors.New("twm config file could not be loaded")
 
 // optionKeys are the filter/content preferences every backend section accepts.
 type optionKeys struct {
-	IncludeResponse *bool `toml:"include_response"`
-	MinTurnSeconds  *int  `toml:"min_turn_seconds"`
-	SkipWhenFocused *bool `toml:"skip_when_focused"`
+	IncludeResponse *bool   `toml:"include_response"`
+	MinTurnSeconds  *int    `toml:"min_turn_seconds"`
+	SkipWhenFocused *bool   `toml:"skip_when_focused"`
+	When            *string `toml:"when"`
+	AwaySeconds     *int    `toml:"away_seconds"`
 }
 
 type fileConfig struct {
@@ -53,11 +55,23 @@ type Options struct {
 	// SkipWhenFocused suppresses messages while the agent's pane is on screen
 	// in a recently active tmux client.
 	SkipWhenFocused bool
+	// When limits delivery to the user's presence at the Mac: WhenAlways,
+	// WhenActive (recent input, screen unlocked) or WhenAway.
+	When string
+	// AwayAfter is how long without keyboard/mouse input counts as away.
+	AwayAfter time.Duration
 }
+
+// Values of Options.When.
+const (
+	WhenAlways = "always"
+	WhenActive = "active"
+	WhenAway   = "away"
+)
 
 // DefaultOptions are used for any preference the file leaves unset.
 func DefaultOptions() Options {
-	return Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true}
+	return Options{IncludeResponse: true, MinTurn: 30 * time.Second, SkipWhenFocused: true, When: WhenAlways, AwayAfter: 5 * time.Minute}
 }
 
 func (f fileConfig) options() Options { return f.Telegram.options() }
@@ -72,6 +86,15 @@ func (t optionKeys) options() Options {
 	}
 	if t.SkipWhenFocused != nil {
 		opts.SkipWhenFocused = *t.SkipWhenFocused
+	}
+	if t.When != nil {
+		switch w := strings.ToLower(strings.TrimSpace(*t.When)); w {
+		case WhenActive, WhenAway:
+			opts.When = w
+		}
+	}
+	if t.AwaySeconds != nil && *t.AwaySeconds > 0 {
+		opts.AwayAfter = time.Duration(*t.AwaySeconds) * time.Second
 	}
 	return opts
 }

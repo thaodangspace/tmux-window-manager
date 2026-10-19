@@ -31,9 +31,9 @@ func TestLoadMacOSConfig(t *testing.T) {
 		},
 		{
 			name:     "all keys set",
-			contents: "[macos]\nenabled = true\nterminal_bundle_id = \" com.googlecode.iterm2 \"\nsound = \"\"\ntimeout_seconds = 0\ninclude_response = true\nmin_turn_seconds = 0\nskip_when_focused = false\n",
+			contents: "[macos]\nenabled = true\nterminal_bundle_id = \" com.googlecode.iterm2 \"\nsound = \"\"\ntimeout_seconds = 0\ninclude_response = true\nmin_turn_seconds = 0\nskip_when_focused = false\nwhen = \"active\"\naway_seconds = 60\n",
 			env:      env,
-			want:     MacOSConfig{TerminalBundleID: "com.googlecode.iterm2", Options: Options{IncludeResponse: true}},
+			want:     MacOSConfig{TerminalBundleID: "com.googlecode.iterm2", Options: Options{IncludeResponse: true, When: WhenActive, AwayAfter: time.Minute}},
 			enabled:  true,
 		},
 		{

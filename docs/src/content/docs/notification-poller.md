@@ -87,7 +87,9 @@ The screen text goes only to the configured endpoint. Redirects are refused.
   notify.
 - **Filters.** Backends with `skip_when_focused = true` skip panes you are
   looking at. `min_turn_seconds` skips "finished" notifications whose busy
-  time (first screen change to last change) was shorter.
+  time (first screen change to last change) was shorter. `when = "active"` /
+  `"away"` routes by whether you are at the Mac (screen unlocked and input
+  within `away_seconds`), e.g. macOS while you work, Telegram when you leave.
 - **Content.** The model's summary is the body of every notification: the
   detail of "needs input" messages and the summary of "finished" messages.
   Set `include_response = false` on a backend to leave it out of "finished"

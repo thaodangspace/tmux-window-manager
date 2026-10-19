@@ -47,6 +47,7 @@ notify/     optional notification backends + model judge
   config.go    twm.toml: [telegram] + [macos] sections, shared option keys
   telegram.go  MarkdownV2 Compose + Bot API delivery
   macos.go     ComposePlain + alerter argv / click-result parsing
+  presence.go  user presence (ioreg HIDIdleTime + screen lock) for `when`
   poller.go    [poller] watcher config + Judge (LM Studio chat/completions, json_schema verdict)
 picker/     list row building + fzf invocation
   build.go     rows; Enricher iface; visible status-panel-label/bot/status format
@@ -126,7 +127,11 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   keep screen-derived text off Telegram) attaches the summary to completed events. Telegram "finished" messages go out silently.
 - **Backends fan out with independent filters.** `notifiersFromConfig`
   returns every enabled backend (Telegram, macOS); `deliver()` applies each
-  backend's own Options. Delivery errors are reduced to categories before
+  backend's own Options. `when = "active"|"away"` (default `always`)
+  routes by presence: away = screen locked or no HID input for
+  `away_seconds` (300). Presence is read lazily, once per event, only if a
+  backend uses `when`; if it can't be read (non-darwin, ioreg failure) every
+  backend sends. Delivery errors are reduced to categories before
   `debugf` logs them (`TWM_DEBUG=1` → `$TMPDIR/twm_debug.log`) because raw
   net/http errors can carry the token-bearing URL.
 - **macOS notifications jump on click.** A `[macos] enabled = true` section

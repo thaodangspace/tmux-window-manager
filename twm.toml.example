@@ -9,6 +9,9 @@ chat_id = "-1001234567890"
 # include_response = true    # add the model's summary to "finished"; false = omit
 # min_turn_seconds = 30      # skip "finished" for shorter turns; 0 = always
 # skip_when_focused = true   # skip while the pane is on screen and in use
+# when = "always"            # "active": only while you use this Mac;
+#                            # "away": only when locked or idle (macOS)
+# away_seconds = 300         # no keyboard/mouse input this long = away
 
 # macOS Notification Center via `brew install alerter`.
 # Clicking a notification jumps to the agent's tmux pane.
@@ -17,7 +20,10 @@ chat_id = "-1001234567890"
 # terminal_bundle_id = "com.googlecode.iterm2"  # default: the launching terminal
 # sound = "default"          # for "needs input"; "" = silent
 # timeout_seconds = 43200    # close unclicked notifications; 0 = never
-# include_response / min_turn_seconds / skip_when_focused as above
+# include_response / min_turn_seconds / skip_when_focused / when /
+# away_seconds as above. Pair `when = "active"` here with `when = "away"`
+# under [telegram] to get alerts on the Mac while you use it, on the phone
+# when you step away.
 
 # Pane watcher. Without `enabled = true` a changing agent screen shows as
 # working, a settled one as idle, and nothing is sent. With it, a local

@@ -57,7 +57,17 @@ min_turn_seconds = 30
 # Skip messages while the agent's pane is on screen in a tmux client that had
 # keyboard activity in the last two minutes.
 skip_when_focused = true
+# Deliver only while you are at your Mac ("active") or only when you are not
+# ("away": screen locked or no keyboard/mouse input for away_seconds).
+# "always" ignores presence. Presence is read on macOS only; elsewhere, or if
+# it cannot be read, the message is sent.
+when = "always"
+away_seconds = 300
 ```
+
+To get Notification Center alerts while you work and Telegram once you step
+away, set `when = "away"` here and `when = "active"` under
+[`[macos]`](/macos-notifications/).
 
 These options are read from the file even when the credentials come from the
 environment.

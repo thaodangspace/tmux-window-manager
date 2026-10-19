@@ -54,7 +54,27 @@ timeout_seconds = 43200
 include_response = true
 min_turn_seconds = 30
 skip_when_focused = true
+when = "always"
+away_seconds = 300
 ```
+
+### Mac while you work, Telegram when you are away
+
+```toml
+[macos]
+enabled = true
+when = "active"
+
+[telegram]
+bot_token = "..."
+chat_id = "..."
+when = "away"
+```
+
+You count as away when the screen is locked or there has been no keyboard or
+mouse input for `away_seconds` (read with `ioreg`). Keep `away_seconds` the
+same in both sections so every event goes to exactly one of them. If presence
+cannot be read, both backends send.
 
 To find an app's bundle ID, run `osascript -e 'id of app "Ghostty"'`.
 

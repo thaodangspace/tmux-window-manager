@@ -166,7 +166,9 @@ finished. Delivery is best effort. Environment variables
 `TWM_TELEGRAM_BOT_TOKEN` and `TWM_TELEGRAM_CHAT_ID` can override the file.
 Messages show the tmux `session:window`, model, the model's summary, and turn
 duration. Short turns and panes you are watching are skipped by default;
-`include_response`, `min_turn_seconds`, and `skip_when_focused` tune this.
+`include_response`, `min_turn_seconds`, and `skip_when_focused` tune this;
+`when = "away"` (with `when = "active"` under `[macos]`) sends to Telegram only
+when the Mac is locked or idle for `away_seconds`.
 See the [Telegram guide](docs/src/content/docs/telegram.md) for details.
 
 ## macOS notifications (optional)

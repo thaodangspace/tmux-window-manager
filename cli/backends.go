@@ -46,6 +46,28 @@ func notifiersFromConfig() []backend {
 // agent pane to count as watched.
 const focusRecent = 2 * time.Minute
 
+// readPresence reads whether the user is at the Mac; tests replace it.
+var readPresence = notify.ReadPresence
+
+// presenceSkip returns why opts.When rules out delivery for the user's
+// presence ("" = send). presence is read at most once per event. When it
+// cannot be read the event is sent, so a broken probe never drops messages.
+func presenceSkip(opts notify.Options, presence func() (notify.Presence, error)) string {
+	if opts.When != notify.WhenActive && opts.When != notify.WhenAway {
+		return ""
+	}
+	p, err := presence()
+	if err != nil {
+		return ""
+	}
+	if away := p.Away(opts); away && opts.When == notify.WhenActive {
+		return "user is away"
+	} else if !away && opts.When == notify.WhenAway {
+		return "user is active"
+	}
+	return ""
+}
+
 // deliver fans event out to every backend, applying each backend's filters.
 // skip, when set, returns why a backend should not receive the event ("" =
 // send). response is attached to completed events for backends that opted in
@@ -56,6 +78,21 @@ func deliver(backends []backend, base notify.Event, watched bool, response strin
 			debugf("notify: delivery failed (panic)")
 		}
 	}()
+	var (
+		presence    notify.Presence
+		presenceErr error
+		presenceSet bool
+	)
+	readOnce := func() (notify.Presence, error) {
+		if !presenceSet {
+			presence, presenceErr = readPresence(context.Background())
+			presenceSet = true
+			if presenceErr != nil {
+				debugf("notify: presence unavailable; sending regardless of `when`")
+			}
+		}
+		return presence, presenceErr
+	}
 	for _, b := range backends {
 		if b.err != nil {
 			debugf("notify: %s configuration failed (%s)", b.name, notifyErrorCategory(b.err))
@@ -72,6 +109,10 @@ func deliver(backends []backend, base notify.Event, watched bool, response strin
 		}
 		if b.opts.SkipWhenFocused && watched {
 			debugf("notify: %s skipped (pane is focused)", b.name)
+			continue
+		}
+		if reason := presenceSkip(b.opts, readOnce); reason != "" {
+			debugf("notify: %s skipped (%s)", b.name, reason)
 			continue
 		}
 		event := base
