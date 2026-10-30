@@ -58,14 +58,34 @@ func (m *macosSender) Notify(_ context.Context, event notify.Event) error {
 }
 
 // spawnDetached starts argv in its own session with stdio on /dev/null, so it
-// outlives the watcher scan and never holds its pipes open.
+// outlives the watcher scan and never holds its pipes open. The child is
+// reaped in the background; without a Wait every exited waiter would stay a
+// zombie of the long-running watcher.
 func spawnDetached(argv []string) error {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// withdrawMacOS removes the still-pending notification of group: its waiter
+// is stopped and alerter withdraws the delivered notification. A group
+// without a waiter was already clicked, dismissed, or timed out.
+func withdrawMacOS(group string, spawn func(argv []string) error) {
+	if !stopWaiter(group) {
+		return
+	}
+	argv, err := notify.AlerterRemoveArgv(group)
+	if err != nil {
+		debugf("notify: macos withdraw %s (%s)", group, notifyErrorCategory(err))
+		return
+	}
+	if err := spawn(argv); err != nil {
+		debugf("notify: macos withdraw %s failed", group)
+	}
 }
 
 // waiterPIDFile records the notify-wait process of one notification group.
@@ -74,24 +94,26 @@ func waiterPIDFile(group string) string {
 }
 
 // stopWaiter terminates the previous waiter of group (and its alerter child,
-// which shares its process group). The pid is trusted only while it still
-// runs notify-wait, so a recycled pid is never signalled.
-func stopWaiter(group string) {
+// which shares its process group) and reports whether one was running. The
+// pid is trusted only while it still runs notify-wait, so a recycled pid is
+// never signalled.
+func stopWaiter(group string) bool {
 	path := waiterPIDFile(group)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return
+		return false
 	}
 	_ = os.Remove(path)
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil || pid <= 1 {
-		return
+		return false
 	}
 	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil || !strings.Contains(string(out), " notify-wait ") {
-		return
+		return false
 	}
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	return true
 }
 
 // newNotifyWaitCommand runs alerter, waits for the user to act on the

@@ -155,6 +155,9 @@ type watcher struct {
 	backends backendFactory
 	upsert   func(store.Status)
 	remove   func(agent, sessionID string)
+	// withdraw removes the pending notification of a pane whose screen moved
+	// on or whose agent is gone.
+	withdraw func(pane, agent string)
 }
 
 func newWatcher(cfg notify.PollerConfig, judgeOn bool, socket string, db *store.DB) *watcher {
@@ -178,6 +181,9 @@ func newWatcher(cfg notify.PollerConfig, judgeOn bool, socket string, db *store.
 		backends: notifiersFromConfig,
 		upsert:   func(store.Status) {},
 		remove:   func(string, string) {},
+		withdraw: func(pane, agent string) {
+			withdrawMacOS(notify.MacOSGroup(paneEvent(pane, agent)), spawnDetached)
+		},
 	}
 	if db != nil {
 		w.upsert = func(s store.Status) {
@@ -221,6 +227,16 @@ func (w *watcher) run(stop <-chan os.Signal) {
 
 func paneSessionID(pane string) string { return "pane:" + pane }
 
+// paneEvent is the identity part of a pane's notification events; the macOS
+// group derives from it.
+func paneEvent(pane, agent string) notify.Event {
+	return notify.Event{
+		Agent:     agents.DisplayName(agent),
+		SessionID: "pane" + strings.TrimPrefix(pane, "%"),
+		Pane:      pane,
+	}
+}
+
 // tick captures every agent pane once. A changed screen marks the pane
 // working; a screen unchanged for Settle is judged once, and its verdict
 // becomes the pane's status and, when it needs the user, a notification.
@@ -263,6 +279,9 @@ func (w *watcher) tick(ctx context.Context) {
 			st.hash, st.changedAt = hash, now
 			if st.status != store.Working {
 				st.busySince = now
+				if w.withdraw != nil {
+					w.withdraw(ap.ID, ap.Agent) // the user moved on
+				}
 			}
 			w.write(ap, st, store.Working, "", "")
 			continue
@@ -320,6 +339,9 @@ func (w *watcher) reapRows(seen map[string]bool) {
 	for id, st := range w.written {
 		if !seen[id] {
 			w.remove(st, paneSessionID(id))
+			if w.withdraw != nil {
+				w.withdraw(id, st)
+			}
 			delete(w.written, id)
 		}
 	}
@@ -373,15 +395,11 @@ func (w *watcher) notify(ap agentPane, st *paneState, v notify.Verdict) {
 		return
 	}
 	focus, _ := w.lookup(ap.ID)
-	e := notify.Event{
-		Agent:      agents.DisplayName(ap.Agent),
-		Cwd:        ap.Cwd,
-		SessionID:  "pane" + strings.TrimPrefix(ap.ID, "%"),
-		Location:   focus.Location,
-		Model:      st.model,
-		Pane:       ap.ID,
-		TmuxSocket: w.socket,
-	}
+	e := paneEvent(ap.ID, ap.Agent)
+	e.Cwd = ap.Cwd
+	e.Location = focus.Location
+	e.Model = st.model
+	e.TmuxSocket = w.socket
 	var busy time.Duration
 	if !st.busySince.IsZero() {
 		busy = st.changedAt.Sub(st.busySince)
@@ -428,11 +446,11 @@ func listAgentPanes() []agentPane {
 	d := agents.NewDetector()
 	var out []agentPane
 	for _, pane := range panes {
-		groups := d.AgentGroups(pane.PID)
-		if len(groups) == 0 {
+		g, ok := d.PaneAgent(pane.PID)
+		if !ok {
 			continue
 		}
-		out = append(out, agentPane{ID: pane.ID, Agent: groups[0].ID, PID: groups[0].PID, Cwd: pane.Path})
+		out = append(out, agentPane{ID: pane.ID, Agent: g.ID, PID: g.PID, Cwd: pane.Path})
 	}
 	return out
 }

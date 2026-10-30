@@ -81,7 +81,7 @@ To find an app's bundle ID, run `osascript -e 'id of app "Ghostty"'`.
 ## What happens on click
 
 `alerter` reports a click only while it is still running, so the watcher starts
-a small detached `tmux-window-manager notify-wait` process per notification and
+a small detached `twm notify-wait` process per notification and
 moves on. When the notification is clicked, `notify-wait`:
 
 1. checks that the pane still exists,
@@ -94,10 +94,17 @@ servers (`tmux -L`) work too. Dismissing the notification or reaching the timeou
 the waiter without doing anything.
 
 A newer event for the same pane replaces the older notification and stops its
-waiter, so at most one waiter runs per pane. The same jump
-is available by hand as `tmux-window-manager jump [--socket PATH] <pane-id>`.
+waiter, so at most one waiter runs per pane. A notification is also withdrawn
+once it is stale: when the pane's screen starts changing again (you answered in
+the pane) or the agent exits. The same jump
+is available by hand as `twm jump [--socket PATH] <pane-id>`.
 
 ## Troubleshooting
+
+Run `twm notify-test` in a tmux pane. It sends a sample "needs
+input" event through every enabled backend, ignoring their filters, and prints
+`sent` or the failure (for example `alerter-missing`) per backend. Clicking the
+test notification jumps back to the pane you ran it from.
 
 Set `TWM_DEBUG=1` in the tmux server environment and restart the watcher.
 `$TMPDIR/twm_debug.log` then records `alerter-missing`, delivery failures, jump errors, or why an event was

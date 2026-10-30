@@ -27,13 +27,13 @@ notifications.
    ```
 
 4. Restart the watcher: reload tmux (`tmux source ~/.tmux.conf`), or run
-   `tmux-window-manager watch --detach --replace`.
+   `twm watch --detach --replace`.
 
 Check the model's reading of every agent pane without writing or sending
 anything:
 
 ```bash
-tmux-window-manager watch --once
+twm watch --once
 ```
 
 It prints one line per agent pane: pane ID, `session:window`, agent, state,

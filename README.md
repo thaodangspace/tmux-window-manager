@@ -38,7 +38,7 @@ script's `jq` / `awk` / `fd` / `t2` dependencies in favor of native Go.
   attached to, you are moved to another session first; the last session is
   never killed).
 - **Ctrl-R** — reload the list (re-reads the latest status).
-- **Status-bar label** — `tmux-window-manager label <pid> <fallback>` prints a
+- **Status-bar label** — `twm label <pid> <fallback>` prints a
   pane's agent name for `window-status-format`.
 
 ## Requirements
@@ -61,6 +61,9 @@ Then press `prefix + I`. TPM clones the repo and the plugin's `.tmux` hook build
 the binary (`go build`) on first run, rebuilding automatically when the source
 changes. Press `prefix + w` to open the picker.
 
+The hook also links the binary as `~/.local/bin/twm`, so with `~/.local/bin` on
+your `PATH` you can run `twm status`, `twm watch --once`, etc. from any shell.
+
 ### Local install (no GitHub)
 
 Point tmux at a local checkout instead of cloning:
@@ -74,7 +77,7 @@ This runs the same build-on-install hook and key binding.
 ### Build from source
 
 ```bash
-go build -o bin/tmux-window-manager ./cmd/tmux-window-manager
+go build -o bin/twm ./cmd/twm
 ```
 
 ## Documentation
@@ -96,6 +99,7 @@ Cloudflare Pages deployment settings.
 |---------------|---------|------------------------------------------------------|
 | `@twm_key`    | `w`     | Prefix key that opens the picker                     |
 | `@twm_bin`    | (auto)  | Set by the plugin to the built binary path, so other config can call it |
+| `@twm_link_bin` | `~/.local/bin/twm` | Where to symlink the binary; `off` disables. An existing non-symlink file is left alone |
 
 Use `@twm_bin` to add the agent label to your status bar:
 
@@ -117,11 +121,12 @@ The binary re-invokes itself for its internal modes; you normally only bind
 | `uninstall-hooks [--dry-run]` | Remove the agent hooks older releases installed |
 | `watch [--detach] [--replace] [--once]` | Pane watcher (started by the plugin); `--once` prints the model's verdicts |
 | `status [--all]` | Dump the recorded agent status rows (debug) |
+| `notify-test` | Send a test notification through every enabled backend |
 
 ## Agent status
 
 Nothing to install per agent. When tmux loads the plugin, it starts
-`tmux-window-manager watch` in the background (restarting it after each
+`twm watch` in the background (restarting it after each
 rebuild). Every 5 seconds the watcher captures each pane running a detected
 agent: a screen that changed is `working`; a screen unchanged for 6 seconds is
 `idle`. Digits are ignored, so timers and token counters do not count as
@@ -137,7 +142,7 @@ interpreter (`node /opt/homebrew/bin/gemini` → `gemini`): `claude`, `codex`,
 **Upgrading from a release that used hooks?** Run once:
 
 ```bash
-tmux-window-manager uninstall-hooks
+twm uninstall-hooks
 ```
 
 It removes the twm hooks from `~/.claude/settings.json` and prints the line
@@ -185,7 +190,8 @@ enabled = true
 The same events appear in Notification Center. Clicking one switches your most
 recent tmux client to the agent's pane and activates your terminal. It uses the
 same filter keys as Telegram, plus `terminal_bundle_id`, `sound`, and
-`timeout_seconds`. See the
+`timeout_seconds`. A notification is withdrawn once the pane moves on or the
+agent exits. Check the setup with `twm notify-test`. See the
 [macOS guide](docs/src/content/docs/macos-notifications.md).
 
 ## Model judge (optional)
@@ -204,7 +210,7 @@ one-sentence summary, and the model name printed on screen. The verdict becomes
 the picker status, and waiting / completed / error are delivered through the
 Telegram/macOS backends above, once per settled screen. Starting the watcher is
 silent. Without the judge there are no notifications.
-`tmux-window-manager watch --once` prints the model's verdict for every agent
+`twm watch --once` prints the model's verdict for every agent
 pane. Reload tmux after editing `[poller]`. See the
 [watcher guide](docs/src/content/docs/notification-poller.md).
 

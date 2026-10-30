@@ -23,8 +23,9 @@ set -g @plugin 'thaodangspace/tmux-window-manager'
 Reload tmux if needed, then press `prefix + I`. TPM clones the repository and
 runs `tmux-window-manager.tmux`, which builds the binary when it is missing or
 older than a Go source file. The plugin also binds `prefix + w`, publishes the
-binary path through the `@twm_bin` tmux option, and (re)starts the background
-pane watcher that records agent status.
+binary path through the `@twm_bin` tmux option, links it as
+`~/.local/bin/twm` (see `@twm_link_bin`), and (re)starts the background pane
+watcher that records agent status.
 
 Press `prefix + w` to open the picker.
 
@@ -41,13 +42,13 @@ This uses the same build-on-install behavior and key binding as TPM.
 ## Build the binary directly
 
 ```sh
-go build -o bin/tmux-window-manager ./cmd/tmux-window-manager
+go build -o bin/twm ./cmd/twm
 ```
 
 Run the picker from inside tmux:
 
 ```sh
-./bin/tmux-window-manager run
+./bin/twm run
 ```
 
 The plugin primes common Homebrew paths because tmux `run-shell` often has a
@@ -58,6 +59,6 @@ standard path or make it visible to the tmux server environment.
 
 - Learn the [window picker controls](/window-picker/).
 - See how [agent status](/agent-status/) works. Upgrading from a release that
-  used hooks? Run `tmux-window-manager uninstall-hooks` once.
+  used hooks? Run `twm uninstall-hooks` once.
 - Optionally enable the [model judge](/notification-poller/) for waiting badges
   and notifications.

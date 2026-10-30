@@ -124,3 +124,17 @@ func TestMoreUrgent(t *testing.T) {
 		t.Error("idle should beat empty")
 	}
 }
+
+// TestNestedAgentBadgeShowsOuterOnly: a codex launched by claude badges the
+// window as claude (as the watcher does), yet a status row keyed on the outer
+// pid still enriches it.
+func TestNestedAgentBadgeShowsOuterOnly(t *testing.T) {
+	live := []store.Status{{Agent: "claude", Model: "opus", Status: store.Working, Pid: 101}}
+	panes := []tmuxcli.Pane{{Session: "cli", WindowIndex: 1, PID: "100"}}
+	det := agents.NewDetectorFromSnapshot("100 1 zsh\n101 100 claude\n102 101 codex\n")
+	e := newLiveEnricher(live, panes, det)
+
+	if b := e.Window("cli", 1, "", ""); b.AgentLabel != "claude(opus)" || b.PaneLabel != "claude" {
+		t.Errorf("badge = %q/%q, want %q/%q", b.AgentLabel, b.PaneLabel, "claude(opus)", "claude")
+	}
+}

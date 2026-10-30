@@ -128,9 +128,17 @@ func TestAlerterArgv(t *testing.T) {
 	if _, err := AlerterArgv(cfg, Event{Kind: "other"}); !errors.Is(err, ErrRequest) {
 		t.Fatalf("unknown kind err = %v", err)
 	}
+	remove, err := AlerterRemoveArgv("twm-claude-s")
+	if err != nil || !reflect.DeepEqual(remove, []string{filepath.Join(bin, alerterBin), "--remove=twm-claude-s"}) {
+		t.Fatalf("remove argv = %q, %v", remove, err)
+	}
+
 	t.Setenv("PATH", t.TempDir())
 	if _, err := AlerterArgv(cfg, Event{Kind: Waiting}); !errors.Is(err, ErrNotifierMissing) {
 		t.Fatalf("missing alerter err = %v", err)
+	}
+	if _, err := AlerterRemoveArgv("g"); !errors.Is(err, ErrNotifierMissing) {
+		t.Fatalf("missing alerter remove err = %v", err)
 	}
 }
 

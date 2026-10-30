@@ -9,7 +9,7 @@ Confirm the required Go version and build directly to expose the compiler error:
 
 ```sh
 go version
-go build -o bin/tmux-window-manager ./cmd/tmux-window-manager
+go build -o bin/twm ./cmd/twm
 ```
 
 The plugin entrypoint rebuilds when the binary is missing or older than any Go
@@ -34,11 +34,11 @@ no-op. Run the binary manually inside tmux when diagnosing startup failures.
 ## Agent badges do not appear
 
 1. Confirm the agent is one of the [supported agents](/agent-status/#supported-agents)
-   and runs inside a tmux pane. `tmux-window-manager label <pane_pid>` prints
+   and runs inside a tmux pane. `twm label <pane_pid>` prints
    the detected name.
-2. Make sure the watcher runs: `pgrep -fl 'tmux-window-manager watch'`. Reload
-   tmux, or run `tmux-window-manager watch --detach --replace`, to start it.
-3. Inspect `tmux-window-manager status`, then press `Ctrl-R` in the picker to
+2. Make sure the watcher runs: `pgrep -fl 'twm watch'`. Reload
+   tmux, or run `twm watch --detach --replace`, to start it.
+3. Inspect `twm status`, then press `Ctrl-R` in the picker to
    reload the database.
 
 Status lags the screen by up to a scan, the settle time, and one model call.
@@ -55,7 +55,7 @@ variables consistent.
 
 1. Check that `[poller] enabled = true` is set and the watcher was restarted
    after the edit.
-2. Run `tmux-window-manager watch --once`. An `error:` column means the model
+2. Run `twm watch --once`. An `error:` column means the model
    endpoint is unreachable or returned an unusable verdict; check that LM
    Studio's server is running with the configured model loaded.
 3. Screens already on display when the watcher starts never notify, and each
@@ -66,7 +66,7 @@ variables consistent.
 
 Releases that used Claude Code and Codex hooks left entries in your agent
 configuration. They now call a no-op and do no harm, but remove them with
-`tmux-window-manager uninstall-hooks` (see [Agent status](/agent-status/#upgrading-from-a-release-that-used-hooks)).
+`twm uninstall-hooks` (see [Agent status](/agent-status/#upgrading-from-a-release-that-used-hooks)).
 
 ## A stale status row is visible
 

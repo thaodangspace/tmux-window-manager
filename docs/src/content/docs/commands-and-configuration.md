@@ -26,7 +26,7 @@ for troubleshooting and integrations but normally should not be called by hand:
 | `notify-wait --group G [--pane P] [--socket S] [--activate ID] -- ARGV` | Detached macOS notification waiter; jumps to the pane on click |
 | `hook` | Deprecated no-op that exits 0, kept so hooks from older releases do not fail |
 
-Use `tmux-window-manager <command> --help` for current argument and flag details.
+Use `twm <command> --help` for current argument and flag details.
 
 ## tmux options
 
@@ -34,6 +34,7 @@ Use `tmux-window-manager <command> --help` for current argument and flag details
 | --- | --- | --- |
 | `@twm_key` | `w` | Prefix key that opens the picker |
 | `@twm_bin` | Set automatically | Absolute binary path published by the plugin entrypoint |
+| `@twm_link_bin` | `~/.local/bin/twm` | Symlink created to the binary for shell use; `off` disables. An existing regular file at that path is never overwritten |
 
 Override the key before loading the plugin:
 

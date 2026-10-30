@@ -209,3 +209,91 @@ func TestResolveScripts(t *testing.T) {
 		t.Fatalf("Names = %v, want gemini and aider", got)
 	}
 }
+
+func TestNamesOutermostOnly(t *testing.T) {
+	// codex launched by claude is reported as the outer claude alone, matching
+	// the watcher's attribution; a sibling agent still shows.
+	snapshot := `  100     1 /bin/zsh
+  101   100 /bin/claude
+  102   101 /bin/codex
+  200   100 /bin/pi`
+	d := newDetectorFromSnapshot(snapshot)
+	if got, want := d.Names("100"), []string{"claude", "pi"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Names = %v, want %v", got, want)
+	}
+	// The nested agent still counts for pid matching.
+	if got, want := d.AgentPIDs("100"), []int{101, 102, 200}; !reflect.DeepEqual(got, want) {
+		t.Errorf("AgentPIDs = %v, want %v", got, want)
+	}
+}
+
+func TestScriptAgent(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"script basename", []string{"/opt/homebrew/bin/gemini", "--yolo"}, "gemini"},
+		{"script extension", []string{"/Users/me/.local/bin/aider.py"}, "aider"},
+		{"flag value before script", []string{"--require", "/tmp/hook.js", "/opt/homebrew/bin/gemini"}, "gemini"},
+		{"npx package spec", []string{"/opt/homebrew/lib/node_modules/npm/bin/npx-cli.js", "@openai/codex@latest"}, "codex"},
+		{"renamed npm package", []string{"/x/npx-cli.js", "@google/gemini-cli"}, "gemini"},
+		{"package entry point", []string{"/opt/homebrew/lib/node_modules/@google/gemini-cli/dist/index.js"}, "gemini"},
+		{"unscoped package entry point", []string{"/usr/lib/node_modules/codex/bin/run.js"}, "codex"},
+		{"bare word argument ignored", []string{"server.js", "--model", "claude"}, ""},
+		{"unrelated package", []string{"/usr/local/lib/node_modules/some-server/index.js"}, ""},
+		{"no args", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scriptAgent(tt.args); got != tt.want {
+				t.Errorf("scriptAgent(%v) = %q, want %q", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPaneAgentPrefersForeground(t *testing.T) {
+	// claude (101) was backgrounded; codex (201) owns the terminal.
+	snapshot := `  100     1 /bin/zsh
+  101   100 /bin/claude
+  201   100 /bin/codex`
+	d := newDetectorFromSnapshot(snapshot)
+	var asked []string
+	d.resolveForeground(func(pids []string) string {
+		asked = pids
+		return "  101   101   201\n  201   201   201\n"
+	})
+	if !reflect.DeepEqual(asked, []string{"101", "201"}) {
+		t.Fatalf("asked foreground for %v", asked)
+	}
+	g, ok := d.PaneAgent("100")
+	if !ok || g.PID != 201 || g.ID != "codex" || !g.Foreground {
+		t.Fatalf("PaneAgent = %+v, %v; want foreground codex 201", g, ok)
+	}
+
+	// Without foreground info (no tty, tpgid 0) the first group wins.
+	d = newDetectorFromSnapshot(snapshot)
+	d.resolveForeground(func([]string) string { return "  101 101 0\n  201 201 0\n" })
+	if g, ok := d.PaneAgent("100"); !ok || g.PID != 101 {
+		t.Fatalf("PaneAgent = %+v, %v; want first group 101", g, ok)
+	}
+	if _, ok := d.PaneAgent("999"); ok {
+		t.Fatal("PaneAgent on a pane without agents should be !ok")
+	}
+}
+
+func TestPaneAgentNestedForeground(t *testing.T) {
+	// The foreground process is a nested codex; the pane still goes to its
+	// outer claude.
+	snapshot := `  100     1 /bin/zsh
+  101   100 /bin/claude
+  102   101 /bin/codex
+  201   100 /bin/pi`
+	d := newDetectorFromSnapshot(snapshot)
+	d.resolveForeground(func([]string) string { return "  101 101 102\n  102 102 102\n  201 201 102\n" })
+	g, ok := d.PaneAgent("100")
+	if !ok || g.PID != 101 || !reflect.DeepEqual(g.Members, []int{101, 102}) {
+		t.Fatalf("PaneAgent = %+v, %v; want claude 101 with members 101,102", g, ok)
+	}
+}

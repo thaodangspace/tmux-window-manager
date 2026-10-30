@@ -29,7 +29,7 @@ chat_id = "-1001234567890"
 # working, a settled one as idle, and nothing is sent. With it, a local
 # OpenAI-compatible model (LM Studio) judges settled screens and decides when
 # to notify through the sections above. Restart the watcher after editing
-# (reload tmux, or `tmux-window-manager watch --detach --replace`).
+# (reload tmux, or `twm watch --detach --replace`).
 # [poller]
 # enabled = true
 # endpoint = "http://localhost:1234/v1"

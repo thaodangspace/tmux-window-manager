@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/thaodangspace/tmux-window-manager/notify"
 )
@@ -96,5 +99,54 @@ func TestStopWaiterIgnoresForeignPID(t *testing.T) {
 	stopWaiter("g")
 	if _, err := os.Stat(waiterPIDFile("g")); !os.IsNotExist(err) {
 		t.Fatalf("stale pid file kept: %v", err)
+	}
+}
+
+func TestWithdrawMacOS(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "alerter"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":/bin:/usr/bin")
+	t.Setenv("TMPDIR", t.TempDir())
+	var spawned [][]string
+	spawn := func(argv []string) error { spawned = append(spawned, argv); return nil }
+
+	// No waiter: the notification was already clicked, dismissed or expired.
+	withdrawMacOS("g", spawn)
+	if len(spawned) != 0 {
+		t.Fatalf("withdrew without a waiter: %q", spawned)
+	}
+
+	// A live waiter is stopped and its notification removed.
+	waiter := exec.Command("/bin/bash", "-c", `exec -a "twm notify-wait --group g" sleep 30`)
+	waiter.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := waiter.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = waiter.Process.Kill() })
+	exited := make(chan error, 1)
+	go func() { exited <- waiter.Wait() }()
+	if err := os.WriteFile(waiterPIDFile("g"), []byte(strconv.Itoa(waiter.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Give exec -a time to replace bash, so ps sees the waiter command line.
+	for i := 0; i < 50; i++ {
+		out, _ := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(waiter.Process.Pid)).Output()
+		if strings.Contains(string(out), " notify-wait ") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	withdrawMacOS("g", spawn)
+	select {
+	case <-exited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter was not stopped")
+	}
+	want := [][]string{{filepath.Join(bin, "alerter"), "--remove=g"}}
+	if !reflect.DeepEqual(spawned, want) {
+		t.Fatalf("spawned %q, want %q", spawned, want)
 	}
 }

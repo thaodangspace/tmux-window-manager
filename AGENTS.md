@@ -14,7 +14,7 @@ and `fzf`.
 ## Layout
 
 ```
-cmd/tmux-window-manager/main.go   entrypoint -> cli.Execute()
+cmd/twm/main.go                   entrypoint -> cli.Execute()
 cli/                              cobra command tree (one file per subcommand)
   root.go      command wiring, exit codes, PATH priming hook
   path.go      ensurePath(): prepend /opt/homebrew/bin etc (run-shell has a minimal env)
@@ -26,7 +26,8 @@ cli/                              cobra command tree (one file per subcommand)
   label.go     status-bar agent name (process detection)
   hook.go      deprecated no-op (exits 0) for hooks older releases installed
   jump.go      switch the most recent client to a pane
-  notifywait.go  macOS sender: detached alerter waiter -> jump on click
+  notifywait.go  macOS sender: detached alerter waiter -> jump on click; withdraw stale ones
+  notifytest.go  `notify-test`: sample event through every backend, per-backend result
   watch.go     pane watcher daemon: capture agent panes -> status DB + local model judge -> backends
   backends.go  backend fan-out (deliver), per-backend filters, debugf / TWM_DEBUG
   uninstallhooks.go  remove twm hooks from Claude settings.json; point at the Codex notify line
@@ -38,7 +39,9 @@ agents/     coding-agent process detection
                  + IsAgent/DisplayName
   proc.go        process-subtree walk -> agent names (port of the awk);
                  interpreter scripts (node/bun/deno/python*) resolved to the
-                 script basename; Agents()/AgentGroups() outermost-agent-per-chain
+                 script (or node_modules package) name; Names() lists outermost
+                 agents only; Agents()/AgentGroups() outermost-agent-per-chain;
+                 PaneAgent() prefers the foreground group (pgid == tpgid)
 store/      SQLite status persistence (written only by the watcher)
   path.go        canonical DB path ($TWM_DB_PATH / $XDG_STATE_HOME / ~/.local/state)
   store.go       schema, Upsert/Get/Delete, LiveByCwd (pid-liveness + lazy reap)
@@ -74,6 +77,7 @@ tmux-window-manager.tmux   TPM entry: build-on-install + bind key + publish @twm
 | `hook ...` | hidden, deprecated no-op (exits 0) so hooks from older releases don't error |
 | `jump [--socket] <pane>` | focus a pane in the most recent client |
 | `notify-wait ...` | detached macOS notification waiter; jumps on click |
+| `notify-test` | send a sample event through every enabled backend, bypassing filters; prints per-backend result |
 | `watch [--detach] [--replace] [--once] [--socket S]` | hidden pane watcher daemon: agent status + notifications |
 | `uninstall-hooks [--dry-run]` | remove twm hooks from Claude settings; print the Codex notify line to delete |
 | `status [--all]` | debug dump of the status rows |
@@ -96,7 +100,7 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   the DB (not `$TMPDIR`, which differs between environments); `--replace`
   SIGTERMs the pid recorded under the lock. On start it deletes every status
   row and rebuilds from the panes. Every `scan_seconds` (5) it lists agent
-  panes (`AllPanes` + `AgentGroups`, outermost agent pid), captures the last
+  panes (`AllPanes` + `PaneAgent`, foreground outermost agent pid), captures the last
   `lines` (60), and hashes the screen with digits stripped so timers/token
   counters are not change. Changed → `working` (and `busySince` is set when
   the pane turns working). Unchanged for `settle_seconds` (6) → judged once;
@@ -144,6 +148,10 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   `open -b terminal_bundle_id`. One waiter per pane: the pid lives in
   `$TMPDIR/twm_notify_<group>.pid`, and a new event kills the previous
   waiter's process group (only if that pid still runs `notify-wait`).
+  Stale notifications are withdrawn (`withdrawMacOS`: stop the waiter, then
+  `alerter --remove=<group>`) when a pane turns working again or its row is
+  reaped. `spawnDetached` reaps children in a goroutine; `Release` alone left
+  every exited waiter a zombie of the watcher.
   alerter values use `--opt=value` so text starting with `-` is safe.
 - **Status source of truth: `store`.** DB at
   `~/.local/state/tmux-window-manager/agents.db` (override `$TWM_DB_PATH`, honors
@@ -208,6 +216,16 @@ The binary re-invokes itself via `os.Executable()` (the script used `$BASH_SOURC
   missing or older than any `.go` file, and publishes the binary path as the
   `@twm_bin` tmux option so status-bar formats can call it. It also removes
   legacy sidebar panes, index-90 hooks, and options left by older releases.
+- **Binary is `twm`; the project stays `tmux-window-manager`.** The binary is
+  built from `cmd/twm` to `bin/twm` and symlinked to `@twm_link_bin` (default
+  `~/.local/bin/twm`, `off` disables; only a missing path or existing symlink
+  is replaced). The repo, Go module path, TPM plugin name, state dir
+  (`~/.local/state/tmux-window-manager`) and the uninstall-hooks marker
+  (`twmHookMarker`, matches hooks written by old releases) keep the long name.
+  The `.tmux` script deletes the pre-rename `bin/tmux-window-manager` (config
+  should call `#{@twm_bin}`, not a hardcoded path); the watcher lock lives next
+  to the DB, so `watch --replace` still stops a watcher started from the old
+  binary.
 - **Docs are an isolated static app.** `docs/` owns its Astro/Starlight npm
   dependencies and lockfile; it does not participate in the Go build or access
   tmux at build time. `SITE_URL` is optional and enables canonical URLs plus a

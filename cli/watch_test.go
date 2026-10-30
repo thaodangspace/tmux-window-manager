@@ -30,6 +30,7 @@ type fakeWatcher struct {
 	rows     map[string]store.Status // keyed by session id
 	sender   *fakeNotifier
 	pid      int
+	withdrew []string // pane ids
 }
 
 func newFakeWatcher(t *testing.T, opts notify.Options) *fakeWatcher {
@@ -62,6 +63,7 @@ func newFakeWatcher(t *testing.T, opts notify.Options) *fakeWatcher {
 	w.backends = func() []backend { return []backend{{name: "fake", sender: f.sender, opts: opts}} }
 	w.upsert = func(s store.Status) { f.rows[s.SessionID] = s }
 	w.remove = func(_, sessionID string) { delete(f.rows, sessionID) }
+	w.withdraw = func(pane, _ string) { f.withdrew = append(f.withdrew, pane) }
 	f.watcher = w
 	return f
 }
@@ -117,6 +119,36 @@ func TestWatcherStatusFollowsScreen(t *testing.T) {
 	f.scan()
 	if _, ok := f.rows["pane:%1"]; ok {
 		t.Fatal("row of a closed agent pane was kept")
+	}
+}
+
+func TestWatcherWithdrawsStaleNotifications(t *testing.T) {
+	f := newFakeWatcher(t, notify.Options{})
+	f.verdicts["approve? [y/n]"] = notify.Verdict{State: notify.ScreenWaiting}
+	f.screens["%1"] = "prompt"
+	f.scan()
+	f.screens["%1"] = "approve? [y/n]"
+	f.scan()
+	f.scan()
+	if len(f.sender.events) != 1 {
+		t.Fatalf("events = %+v, want one waiting notification", f.sender.events)
+	}
+	f.withdrew = nil
+
+	// The user answered in the pane: the screen moves on.
+	f.screens["%1"] = "running 1"
+	f.scan()
+	f.screens["%1"] = "running 2 more"
+	f.scan()
+	if len(f.withdrew) != 1 || f.withdrew[0] != "%1" {
+		t.Fatalf("withdrew %q, want %%1 once when the pane turned working", f.withdrew)
+	}
+
+	// The agent is gone: its notification goes too.
+	delete(f.screens, "%1")
+	f.scan()
+	if len(f.withdrew) != 2 || f.withdrew[1] != "%1" {
+		t.Fatalf("withdrew %q, want %%1 again when the pane was reaped", f.withdrew)
 	}
 }
 

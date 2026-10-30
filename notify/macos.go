@@ -22,6 +22,15 @@ const (
 // ErrNotifierMissing means alerter is not on PATH.
 var ErrNotifierMissing = errors.New("alerter not found")
 
+// AlerterPath returns the alerter executable, or ErrNotifierMissing.
+func AlerterPath() (string, error) {
+	bin, err := exec.LookPath(alerterBin)
+	if err != nil {
+		return "", ErrNotifierMissing
+	}
+	return bin, nil
+}
+
 // ErrNotifierFailed means the notification could not be posted.
 var ErrNotifierFailed = errors.New("macos notification failed")
 
@@ -155,9 +164,9 @@ func AlerterArgv(cfg MacOSConfig, event Event) ([]string, error) {
 	if !ok {
 		return nil, ErrRequest
 	}
-	bin, err := exec.LookPath(alerterBin)
+	bin, err := AlerterPath()
 	if err != nil {
-		return nil, ErrNotifierMissing
+		return nil, err
 	}
 	argv := []string{
 		bin,
@@ -172,6 +181,16 @@ func AlerterArgv(cfg MacOSConfig, event Event) ([]string, error) {
 		argv = append(argv, "--sound="+cfg.Sound)
 	}
 	return argv, nil
+}
+
+// AlerterRemoveArgv returns the alerter command line that withdraws the
+// delivered notification of group.
+func AlerterRemoveArgv(group string) ([]string, error) {
+	bin, err := AlerterPath()
+	if err != nil {
+		return nil, err
+	}
+	return []string{bin, "--remove=" + group}, nil
 }
 
 // Clicked reports whether alerter's JSON output describes a click on the

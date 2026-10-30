@@ -4,7 +4,7 @@ description: How the pane watcher detects coding agents and badges their windows
 ---
 
 Agent status comes from the panes themselves. When tmux loads the plugin, it
-starts `tmux-window-manager watch` in the background. The watcher captures every
+starts `twm watch` in the background. The watcher captures every
 pane running a coding agent, writes one status row per pane to a local SQLite
 database, and the picker reads that database when it opens or when you press
 `Ctrl-R`. There is nothing to install per agent.
@@ -60,8 +60,8 @@ Older releases recorded status through Claude Code hooks and the Codex `notify`
 program, set up by a hook installer that no longer exists. Remove them once:
 
 ```sh
-tmux-window-manager uninstall-hooks --dry-run   # preview
-tmux-window-manager uninstall-hooks
+twm uninstall-hooks --dry-run   # preview
+twm uninstall-hooks
 ```
 
 It removes every twm hook group from `$CLAUDE_CONFIG_DIR/settings.json` (or
@@ -87,7 +87,7 @@ panes, and it removes the row of a pane that no longer runs an agent.
 Inspect live rows with:
 
 ```sh
-tmux-window-manager status
+twm status
 ```
 
 Include dead rows for debugging with `status --all`.

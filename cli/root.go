@@ -53,9 +53,9 @@ var version = "dev"
 
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "tmux-window-manager",
+		Use:           "twm",
 		Short:         "Fuzzy tmux window switcher with native agent detection",
-		Long:          "tmux-window-manager is a self-contained fuzzy window switcher for tmux.\nIt lists windows across all sessions, previews their panes, and badges windows\nrunning coding agents (claude, codex, gemini, ...) — detected natively, no external tools\nbeyond tmux and fzf.",
+		Long:          "twm (tmux-window-manager) is a self-contained fuzzy window switcher for tmux.\nIt lists windows across all sessions, previews their panes, and badges windows\nrunning coding agents (claude, codex, gemini, ...) — detected natively, no external tools\nbeyond tmux and fzf.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -76,6 +76,7 @@ func newRootCommand() *cobra.Command {
 		newHookCommand(),
 		newJumpCommand(),
 		newNotifyWaitCommand(),
+		newNotifyTestCommand(),
 		newWatchCommand(),
 		newUninstallHooksCommand(),
 		newStatusCommand(),
@@ -92,7 +93,7 @@ func Execute() int {
 	if err == nil {
 		return exitOK
 	}
-	fmt.Fprintln(os.Stderr, "tmux-window-manager:", err)
+	fmt.Fprintln(os.Stderr, "twm:", err)
 	return exitCodeFor(err)
 }
 

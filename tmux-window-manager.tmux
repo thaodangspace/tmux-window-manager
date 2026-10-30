@@ -5,10 +5,12 @@
 # install (or after a `git pull` changes the source), exposes the binary path as
 # the @twm_bin tmux option (so status-bar formats can call it), and binds the
 # picker key (default: prefix + w, override with `set -g @twm_key '<key>'`).
+# It also links the binary as `twm` on PATH (default ~/.local/bin/twm; change
+# with `set -g @twm_link_bin '<path>'`, disable with `set -g @twm_link_bin off`).
 set -euo pipefail
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-BIN="$CURRENT_DIR/bin/tmux-window-manager"
+BIN="$CURRENT_DIR/bin/twm"
 
 # TPM runs hooks with a minimal environment; make sure the Go toolchain and
 # common binary dirs (fzf lives here too) are discoverable.
@@ -24,13 +26,32 @@ needs_build() {
 
 if needs_build; then
   if command -v go >/dev/null 2>&1; then
-    if ! (cd "$CURRENT_DIR" && go build -o "$BIN" ./cmd/tmux-window-manager) >/tmp/twm_build.log 2>&1; then
+    if ! (cd "$CURRENT_DIR" && go build -o "$BIN" ./cmd/twm) >/tmp/twm_build.log 2>&1; then
       msg "build failed — see /tmp/twm_build.log"
       exit 0
     fi
   elif [ ! -x "$BIN" ]; then
     msg "Go toolchain not found and no prebuilt binary — install Go to use this plugin"
     exit 0
+  fi
+fi
+
+# Releases before the rename built bin/tmux-window-manager; drop it so a stale
+# binary can't be invoked by old config. The watcher lock is name-independent,
+# so `watch --replace` below still stops a watcher started from it.
+rm -f "$CURRENT_DIR/bin/tmux-window-manager"
+
+# Link the binary onto PATH for interactive use. Only a missing path or an
+# existing symlink is (re)pointed; a regular file there is left alone.
+LINK="$(tmux show-option -gqv @twm_link_bin)"
+[ -n "$LINK" ] || LINK="$HOME/.local/bin/twm"
+if [ "$LINK" != "off" ]; then
+  LINK="${LINK/#\~/$HOME}"
+  if [ -L "$LINK" ] || [ ! -e "$LINK" ]; then
+    mkdir -p "$(dirname "$LINK")" && ln -sfn "$BIN" "$LINK" 2>/dev/null ||
+      msg "could not link $LINK"
+  else
+    msg "$LINK exists and is not a symlink; skipping twm link"
   fi
 fi
 

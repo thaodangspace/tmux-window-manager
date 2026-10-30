@@ -21,8 +21,9 @@ type proc struct {
 // Detector holds a single process snapshot, reused across every lookup so we
 // run `ps` once (matching the script's one-shot $ps_snap), not per pane.
 type Detector struct {
-	order    []proc              // processes in ps output order
-	children map[string][]string // ppid -> child pids
+	order      []proc              // processes in ps output order
+	children   map[string][]string // ppid -> child pids
+	foreground map[string]bool     // agent pids in their terminal's foreground process group
 }
 
 // NewDetector captures the current process table via
@@ -33,6 +34,10 @@ func NewDetector() *Detector {
 	d := newDetectorFromSnapshot(string(out))
 	d.resolveScripts(func(pids []string) string {
 		out, _ := exec.Command("ps", "-o", "pid=,args=", "-p", strings.Join(pids, ",")).Output()
+		return string(out)
+	})
+	d.resolveForeground(func(pids []string) string {
+		out, _ := exec.Command("ps", "-o", "pid=,pgid=,tpgid=", "-p", strings.Join(pids, ",")).Output()
 		return string(out)
 	})
 	return d
@@ -63,24 +68,107 @@ func (d *Detector) resolveScripts(args func(pids []string) string) {
 		if len(fields) < 3 {
 			continue
 		}
-		// fields[1] is the interpreter; the first non-flag argument is the script.
-		for _, a := range fields[2:] {
-			if strings.HasPrefix(a, "-") {
-				continue
-			}
-			name := basename(a)
-			if i := strings.LastIndex(name, "."); i > 0 {
-				name = name[:i] // gemini.js -> gemini
-			}
-			if IsAgent(name) {
-				scripts[fields[0]] = name
-			}
-			break
+		// fields[1] is the interpreter; the rest are its arguments.
+		if name := scriptAgent(fields[2:]); name != "" {
+			scripts[fields[0]] = name
 		}
 	}
 	for i, p := range d.order {
 		if name, ok := scripts[p.pid]; ok {
 			d.order[i].name = name
+		}
+	}
+}
+
+// packageAgents maps npm package names that differ from their agent id.
+var packageAgents = map[string]string{
+	"gemini-cli":  "gemini",
+	"qwen-code":   "qwen",
+	"claude-code": "claude",
+}
+
+// scriptAgent returns the agent an interpreter's arguments run, or "". The first
+// positional argument is the script; later ones count only when they are paths
+// or package specs (`npx @openai/codex`, `node --require x.js /bin/gemini`), so a
+// bare word such as `--model claude` is not mistaken for an agent.
+func scriptAgent(args []string) string {
+	positional := 0
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		positional++
+		if positional > 1 && !strings.Contains(a, "/") {
+			continue
+		}
+		if name := pathAgent(a); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// pathAgent names the agent a script path or package spec belongs to: by its
+// basename (gemini.js, codex@latest, gemini-cli) or, for an entry point inside
+// an installed package (.../node_modules/@google/gemini-cli/dist/index.js), by
+// that package's name.
+func pathAgent(p string) string {
+	if id := agentID(basename(p)); id != "" {
+		return id
+	}
+	parts := strings.Split(p, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] != "node_modules" {
+			continue
+		}
+		pkg := parts[i+1]
+		if strings.HasPrefix(pkg, "@") && i+2 < len(parts) {
+			pkg = parts[i+2]
+		}
+		if id := agentID(pkg); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// agentID strips a version (`@latest`) and extension (`.js`) from name and
+// returns the agent it names, or "".
+func agentID(name string) string {
+	if i := strings.LastIndex(name, "@"); i > 0 {
+		name = name[:i]
+	}
+	if i := strings.LastIndex(name, "."); i > 0 {
+		name = name[:i]
+	}
+	if IsAgent(name) {
+		return name
+	}
+	return packageAgents[name]
+}
+
+// resolveForeground records which agent processes belong to their terminal's
+// foreground process group (pgid == tpgid), so a pane running several agents
+// can be attributed to the one on screen. stat fetches `ps -o pid=,pgid=,tpgid=`
+// for the given pids in one call.
+func (d *Detector) resolveForeground(stat func(pids []string) string) {
+	var pids []string
+	for _, p := range d.order {
+		if IsAgent(p.name) {
+			pids = append(pids, p.pid)
+		}
+	}
+	if len(pids) == 0 {
+		return
+	}
+	d.foreground = map[string]bool{}
+	for _, line := range strings.Split(stat(pids), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		if tpgid, err := strconv.Atoi(fields[2]); err == nil && tpgid > 0 && fields[1] == fields[2] {
+			d.foreground[fields[0]] = true
 		}
 	}
 }
@@ -112,20 +200,22 @@ func newDetectorFromSnapshot(snapshot string) *Detector {
 	return d
 }
 
-// Names returns the distinct agent basenames found anywhere in the process
+// Names returns the distinct basenames of the outermost agents in the process
 // subtree rooted at the given pids (the pids themselves included), in ps order.
-// This is the native port of the awk descendant-marking loop.
+// A nested agent (codex launched by claude) is left out, so labels agree with
+// the watcher, which attributes a pane to its outermost agent.
 func (d *Detector) Names(rootPIDs ...string) []string {
 	if len(rootPIDs) == 0 || len(d.order) == 0 {
 		return nil
 	}
 	want := d.descendants(rootPIDs)
+	index := d.byPID()
 
 	// Collect distinct agent names in ps output order.
 	var out []string
 	seen := make(map[string]bool)
 	for _, p := range d.order {
-		if want[p.pid] && IsAgent(p.name) && !seen[p.name] {
+		if want[p.pid] && IsAgent(p.name) && !seen[p.name] && !d.hasAgentAncestor(p, want, index) {
 			seen[p.name] = true
 			out = append(out, p.name)
 		}
@@ -206,6 +296,9 @@ type AgentGroup struct {
 	PID     int    // outermost agent's pid
 	ID      string // outermost agent's basename
 	Members []int  // every agent pid in the chain (PID included), in ps order
+	// Foreground reports whether any process in the chain is in its terminal's
+	// foreground process group (always false for snapshot-built detectors).
+	Foreground bool
 }
 
 // AgentGroups returns the agent processes in the subtree(s) rooted at rootPIDs
@@ -243,6 +336,9 @@ func (d *Detector) AgentGroups(rootPIDs ...string) []AgentGroup {
 			order = append(order, opid)
 		}
 		g.Members = append(g.Members, pid)
+		if d.foreground[p.pid] {
+			g.Foreground = true
+		}
 	}
 
 	if len(order) == 0 {
@@ -253,6 +349,22 @@ func (d *Detector) AgentGroups(rootPIDs ...string) []AgentGroup {
 		out = append(out, *groups[opid])
 	}
 	return out
+}
+
+// PaneAgent returns the agent a pane rooted at rootPID is attributed to: the
+// group in the terminal's foreground, else the first group in ps order. ok is
+// false when the pane runs no agent.
+func (d *Detector) PaneAgent(rootPID string) (g AgentGroup, ok bool) {
+	groups := d.AgentGroups(rootPID)
+	if len(groups) == 0 {
+		return AgentGroup{}, false
+	}
+	for _, g := range groups {
+		if g.Foreground {
+			return g, true
+		}
+	}
+	return groups[0], true
 }
 
 // outerAgent returns the outermost agent process at or above p within the queried
